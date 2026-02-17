@@ -124,7 +124,7 @@ export default function CheckPage() {
   const processGvizTable = (table: any) => {
     if (!table || !table.rows) return []
     return table.rows.map((row: any, index: number) => {
-      const rowData: { [key: string]: any } = { _rowIndex: index + 2 }
+      const rowData: { [key: string]: any } = { _rowIndex: index + 3 }
         ; (row.c || []).forEach((cell: any, cellIndex: number) => {
           rowData[`col${cellIndex}`] = cell ? (cell.f ?? cell.v) : null
         })
