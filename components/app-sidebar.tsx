@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useMemo } from "react"
 import { Home, Settings, LogOut, PackageCheck, BarChart, FlaskConical, Beaker, FileSpreadsheet, ClipboardCheck, ListChecks, Clipboard, Package, ShoppingCart, Factory } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -12,12 +12,11 @@ export function AppSidebar() {
   const { user, logout } = useAuth()
   const pathname = usePathname()
 
-  if (!user) return null;
-
-  const allMenuItems = [
+  const allMenuItems = useMemo(() => [
     { id: "dashboard", title: "Dashboard", icon: Home, href: "/" },
     { id: "orders", title: "Orders", icon: ShoppingCart, href: "/orders" },
     { id: "full-kitting", title: "Full Kitting", icon: Package, href: "/full-kitting" },
+    { id: "lab-test", title: "Lab Test", icon: Settings, href: "/lab-test" },
     { id: "job-cards", title: "Job Cards", icon: Clipboard, href: "/job-cards" },
     { id: "production", title: "Production", icon: Factory, href: "/production" },
     { id: "lab-testing1", title: "Lab Testing 1", icon: FlaskConical, href: "/lab-testing1" },
@@ -26,12 +25,16 @@ export function AppSidebar() {
     { id: "check", title: "Check", icon: ClipboardCheck, href: "/check" },
     { id: "tally", title: "Tally", icon: ListChecks, href: "/tally" },
     { id: "settings", title: "Settings", icon: Settings, href: "/settings" },
-  ];
+  ], [])
 
-  // If user is admin, show all pages. Otherwise, filter by permissions.
-  const menuItems = user.role?.toLowerCase() === 'admin'
-    ? allMenuItems
-    : allMenuItems.filter(item => user.permissions.includes(item.id));
+  const menuItems = useMemo(() => {
+    if (!user) return []
+    return user.role?.toLowerCase() === 'admin'
+      ? allMenuItems
+      : allMenuItems.filter(item => user.permissions.includes(item.id))
+  }, [user, allMenuItems])
+
+  if (!user) return null;
 
   return (
     <Sidebar>
@@ -46,7 +49,7 @@ export function AppSidebar() {
           {menuItems.map((item) => (
             <SidebarMenuItem key={item.id}>
               <SidebarMenuButton asChild isActive={pathname === item.href}>
-                <Link href={item.href}><item.icon className="mr-3 h-5 w-5" />{item.title}</Link>
+                <Link href={item.href} prefetch={false}><item.icon className="mr-3 h-5 w-5" />{item.title}</Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}

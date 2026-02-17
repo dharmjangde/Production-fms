@@ -31,7 +31,28 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts"
+import {
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  AreaChart,
+  Area
+} from "recharts"
+import {
+  ArrowUpRight,
+  ArrowDownRight,
+  Activity
+} from "lucide-react"
 
 // --- CONSTANTS ---
 const SHEET_ID = "1Oh16UfYFmNff0YLxHRh_D3mw3r7m7b9FOvxRpJxCUh4"
@@ -188,7 +209,7 @@ const useProductionData = () => {
     try {
       const parsedDate = parse(gvizDate, "dd/MM/yyyy HH:mm:ss", new Date())
       if (!isNaN(parsedDate.getTime())) return parsedDate
-    } catch (e) {}
+    } catch (e) { }
     const dateTimeMatch = gvizDate.match(/Date\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)/)
     if (dateTimeMatch) {
       const [, year, month, day, hours, minutes, seconds] = dateTimeMatch.map(Number)
@@ -342,8 +363,8 @@ const useProductionData = () => {
       const firmNames = [...new Set(processedAllOrders.map(o => o.firmName))].filter(Boolean);
       const partyNames = [...new Set(processedAllOrders.map(o => o.partyName))].filter(Boolean);
       const orderNumbers = [...new Set(processedAllOrders.map(o => o.orderNo))]
-                            .filter(Boolean)
-                            .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+        .filter(Boolean)
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
       const products = [...new Set(processedAllOrders.map(o => o.productName))].filter(Boolean);
       const priorities = getUniqueOptions(rawMasterData, 0);
       const supervisors = getUniqueOptions(rawMasterData, 1);
@@ -371,118 +392,142 @@ const useProductionData = () => {
 // --- MAIN DASHBOARD COMPONENT ---
 export default function ProductionDashboard() {
   const { allOrders, productionOrders, actualProductionData, jobCardsData, kittingHistory, masterData, loading, error, refetch } = useProductionData()
-  const [activeTab, setActiveTab] = useState("overview")
-  const [viewingKittingDetails, setViewingKittingDetails] = useState<KittingHistoryRecord | null>(null)
-  const [viewingProductionMaterials, setViewingProductionMaterials] = useState<ActualProductionRecord | null>(null)
 
-  // --- FILTER STATES ---
-  const [startDate, setStartDate] = useState<Date | undefined>()
-  const [endDate, setEndDate] = useState<Date | undefined>()
-  const [firmName, setFirmName] = useState<string>("")
-  const [partyName, setPartyName] = useState<string>("")
-  const [productName, setProductName] = useState<string>("")
-  const [orderNo, setOrderNo] = useState<string>("")
-  const [priority, setPriority] = useState<string>("")
-  const [supervisor, setSupervisor] = useState<string>("")
+  // --- DERIVED METRICS ---
+  const metrics = useMemo(() => {
+    const totalOrders = allOrders.length
+    const pendingOrders = allOrders.length - productionOrders.length
+    const activeProduction = productionOrders.filter(o => o.status !== 'Completed').length
+    const completedProduction = actualProductionData.length // Approximate
 
-  const filteredProductionOrders = useMemo(() => {
-    return productionOrders.filter((o) => {
-      const dateMatch = (() => {
-        if (!startDate && !endDate) return true
-        if (!o.deliveryDateObj) return false
-        if (startDate && o.deliveryDateObj < startDate) return false
-        if (endDate && o.deliveryDateObj > endDate) return false
-        return true
-      })()
-      return (
-        dateMatch &&
-        (!partyName || o.partyName === partyName) &&
-        (!productName || o.productName === productName) &&
-        (!priority || o.priority === priority) &&
-        (!orderNo || o.deliveryOrderNo === orderNo)
-      )
-    })
-  }, [productionOrders, partyName, productName, priority, orderNo, startDate, endDate])
+    // Calculate completion rate
+    const completionRate = totalOrders > 0 ? ((productionOrders.length / totalOrders) * 100).toFixed(1) : "0"
 
-  const filteredKittingHistory = useMemo(() => {
-    return kittingHistory.filter(k => {
-        return (!orderNo || k.deliveryOrderNo === orderNo) &&
-               (!productName || k.productName === productName)
-    })
-  }, [kittingHistory, orderNo, productName])
+    return {
+      totalOrders,
+      pendingOrders,
+      activeProduction,
+      completedProduction,
+      completionRate,
+      jobCards: jobCardsData.length
+    }
+  }, [allOrders, productionOrders, actualProductionData, jobCardsData])
 
-  const filteredJobCards = useMemo(() => {
-    return jobCardsData.filter((jc) => {
-      const dateMatch = (() => {
-        if (!startDate && !endDate) return true
-        if (!jc.dateOfProductionObj) return false
-        if (startDate && jc.dateOfProductionObj < startDate) return false
-        if (endDate && jc.dateOfProductionObj > endDate) return false
-        return true
-      })()
-      return (
-        dateMatch &&
-        (!firmName || jc.firmName === firmName) &&
-        (!partyName || jc.partyName === partyName) &&
-        (!orderNo || jc.deliveryOrderNo === orderNo) &&
-        (!supervisor || jc.supervisorName === supervisor) &&
-        (!productName || jc.productName === productName)
-      )
-    })
-  }, [jobCardsData, firmName, partyName, orderNo, supervisor, productName, startDate, endDate])
+  // --- CHART DATA PREPARATION ---
 
-  const filteredProduction = useMemo(() => {
-    return actualProductionData.filter((p) => {
-      return (
-        (!firmName || p.firmName === firmName) &&
-        (!supervisor || p.supervisorName === supervisor) &&
-        (!productName || p.productName === productName)
-      )
-    })
-  }, [actualProductionData, firmName, supervisor, productName])
+  const CHART_COLORS = ["#8B5CF6", "#EC4899", "#10B981", "#F59E0B", "#3B82F6", "#6366F1"];
 
-  // --- DASHBOARD METRICS ---
-  const dashboardMetrics = useMemo(() => {
-    const totalOrdersRecieved = allOrders.length
-    const totalOrdersProcessed = productionOrders.length
-    const totalPendingOrders = totalOrdersRecieved - totalOrdersProcessed
-    const jobCardsCreated = jobCardsData.length
-    return { totalOrdersRecieved, totalOrdersProcessed, totalPendingOrders, jobCardsCreated }
-  }, [allOrders, productionOrders, jobCardsData])
-
-  // --- CHART DATA ---
-  const topPartiesChartData = useMemo(() => {
+  // 1. Top Parties (Bar Chart)
+  const topPartiesData = useMemo(() => {
     if (!productionOrders.length) return []
-    const partyCounts = productionOrders.reduce((acc, order) => {
-      if (order.partyName) {
-        acc[order.partyName] = (acc[order.partyName] || 0) + 1
-      }
+    const counts = productionOrders.reduce((acc, order) => {
+      const party = order.partyName || "Unknown"
+      acc[party] = (acc[party] || 0) + 1
       return acc
-    }, {} as { [key: string]: number })
-    return Object.entries(partyCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
+    }, {} as Record<string, number>)
+
+    return Object.entries(counts)
       .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
   }, [productionOrders])
 
-  const handleResetFilters = () => {
-    setStartDate(undefined)
-    setEndDate(undefined)
-    setFirmName("")
-    setPartyName("")
-    setProductName("")
-    setOrderNo("")
-    setPriority("")
-    setSupervisor("")
-  }
+  // 2. Priority Distribution (Pie Chart)
+  const priorityData = useMemo(() => {
+    const counts = productionOrders.reduce((acc, order) => {
+      const p = order.priority || "Normal"
+      acc[p] = (acc[p] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+
+    return Object.entries(counts).map(([name, value]) => ({ name, value }))
+  }, [productionOrders])
+
+  // 3. Order Status (Donut Chart)
+  const statusData = useMemo(() => {
+    const counts = productionOrders.reduce((acc, order) => {
+      const s = order.status || "Pending"
+      acc[s] = (acc[s] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+    return Object.entries(counts).map(([name, value]) => ({ name, value }))
+  }, [productionOrders])
+
+  // 4. Production Trend (Area Chart - Last 7 Days)
+  const productionTrendData = useMemo(() => {
+    const last7Days = new Array(7).fill(0).map((_, i) => {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      return format(d, "dd/MM")
+    }).reverse()
+
+    const counts = actualProductionData.reduce((acc, prod) => {
+      if (prod.timestampObj) {
+        const dateStr = format(prod.timestampObj, "dd/MM")
+        acc[dateStr] = (acc[dateStr] || 0) + (prod.quantityFG || 0)
+      }
+      return acc
+    }, {} as Record<string, number>)
+
+    return last7Days.map(date => ({
+      date,
+      quantity: counts[date] || 0
+    }))
+  }, [actualProductionData])
+
+  // 5. Recent Activity Feed
+  const recentActivities = useMemo(() => {
+    const activities = [
+      ...productionOrders.map(o => ({
+        id: o.id,
+        type: 'order',
+        title: `New Order: ${o.deliveryOrderNo}`,
+        subtitle: `${o.productName} - ${o.partyName}`,
+        date: o.timestampObj,
+        color: "text-blue-500",
+        bg: "bg-blue-50"
+      })),
+      ...jobCardsData.map(j => ({
+        id: j.id,
+        type: 'jobcard',
+        title: `Job Card: ${j.jobCardNo}`,
+        subtitle: `${j.productName} - ${j.supervisorName}`,
+        date: j.timestampObj,
+        color: "text-purple-500",
+        bg: "bg-purple-50"
+      })),
+      ...actualProductionData.map(p => ({
+        id: p.id,
+        type: 'production',
+        title: `Production: ${p.jobCardNo}`,
+        subtitle: `${p.productName} - ${p.quantityFG} units`,
+        date: p.timestampObj,
+        color: "text-emerald-500",
+        bg: "bg-emerald-50"
+      })),
+      ...kittingHistory.map(k => ({
+        id: k.id,
+        type: 'kitting',
+        title: `Kitting Verified: ${k.compositionNumber}`,
+        subtitle: `${k.productName}`,
+        date: k.timestampObj,
+        color: "text-amber-500",
+        bg: "bg-amber-50"
+      }))
+    ]
+
+    return activities
+      .sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
+      .slice(0, 7)
+  }, [productionOrders, jobCardsData, actualProductionData, kittingHistory])
+
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen bg-slate-50">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-violet-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-700">Loading Production Dashboard</h2>
-          <p className="text-slate-500">Fetching the latest data...</p>
+      <div className="flex h-screen w-full items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-muted-foreground animate-pulse">Loading Dashboard...</p>
         </div>
       </div>
     )
@@ -490,391 +535,218 @@ export default function ProductionDashboard() {
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-screen bg-slate-50">
-         <div className="p-8 text-center bg-white border border-red-200 text-red-700 rounded-2xl shadow-lg max-w-md mx-auto">
-          <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-red-500" />
-          <p className="text-2xl font-bold">Error Loading Data</p>
-          <p className="text-sm text-slate-600 mt-2 mb-6">{error}</p>
-          <Button onClick={refetch} className="bg-violet-500 text-white hover:bg-violet-600">
-            <RefreshCw className="w-4 h-4 mr-2" /> Retry
-          </Button>
-        </div>
+      <div className="flex h-screen w-full items-center justify-center bg-slate-50 p-4">
+        <Card className="max-w-md w-full border-destructive/50 bg-destructive/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Error Loading Data
+            </CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={refetch} variant="outline" className="w-full">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry Connection
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
-      <header className="bg-white/80 backdrop-blur-lg border-b border-slate-200 px-8 py-4 sticky top-0 z-30">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-violet-600">Production Planning Dashboard</h1>
-            <p className="text-sm text-slate-500">Real-time operational overview</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={refetch} className="text-violet-600 border-violet-300 hover:bg-violet-50 hover:text-violet-600">
-            <RefreshCw className="w-4 h-4 mr-2" /> Refresh Data
+    <div className="min-h-screen bg-slate-50/50 p-6 space-y-8 animate-in fade-in duration-500">
+      {/* HEADER */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 mt-1">Overview of production performance and activities.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">Last updated: {format(new Date(), "HH:mm")}</span>
+          <Button variant="outline" size="sm" onClick={refetch} className="hover:bg-slate-100">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
           </Button>
         </div>
-      </header>
-      <main className="p-8">
-        <Card className="shadow-lg shadow-slate-200/50 border-slate-200/80 mb-8 bg-white rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3 text-violet-600">
-              <Filter className="h-6 w-6" />
-              <span className="text-xl">Filter & Search</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4 mb-4">
-               <SelectWithLabel
-                label="Firm Name"
-                placeholder="All Firms"
-                value={firmName}
-                onValueChange={setFirmName}
-                options={masterData.firmNames}
-              />
-              <SelectWithLabel
-                label="Party Name"
-                placeholder="All Parties"
-                value={partyName}
-                onValueChange={setPartyName}
-                options={masterData.partyNames}
-              />
-               <SelectWithLabel
-                label="Order No."
-                placeholder="All Orders"
-                value={orderNo}
-                onValueChange={setOrderNo}
-                options={masterData.orderNumbers}
-              />
-              <SelectWithLabel
-                label="Product Name"
-                placeholder="All Products"
-                value={productName}
-                onValueChange={setProductName}
-                options={masterData.products}
-              />
-              <DatePickerWithLabel label="Start Date" date={startDate} setDate={setStartDate} placeholder="Start date" />
-              <DatePickerWithLabel label="End Date" date={endDate} setDate={setEndDate} placeholder="End date" />
-              <SelectWithLabel
-                label="Priority"
-                placeholder="All Priorities"
-                value={priority}
-                onValueChange={setPriority}
-                options={masterData.priorities}
-              />
-              <SelectWithLabel
-                label="Supervisor"
-                placeholder="All Supervisors"
-                value={supervisor}
-                onValueChange={setSupervisor}
-                options={masterData.supervisors}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="ghost" onClick={handleResetFilters} className="text-violet-600 hover:bg-violet-100 hover:text-violet-700">
-                Reset Filters
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 h-12 p-1 bg-violet-100/90 rounded-xl">
-            <TabsTrigger value="overview">
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="orders">
-              <ClipboardList className="w-4 h-4 mr-2" />
-              Production Orders
-            </TabsTrigger>
-            <TabsTrigger value="kitting">
-              <ClipboardCheck className="w-4 h-4 mr-2" />
-              Full Kitting
-            </TabsTrigger>
-            <TabsTrigger value="job-cards">
-              <FileText className="w-4 h-4 mr-2" />
-              Job Cards
-            </TabsTrigger>
-            <TabsTrigger value="production">
-              <Factory className="w-4 h-4 mr-2" />
-              Actual Production
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              <KpiCard title="Total Orders Processed" value={dashboardMetrics.totalOrdersProcessed} icon={<Factory size={20} />} />
-              <KpiCard title="Total Pending Orders" value={dashboardMetrics.totalPendingOrders} icon={<ClipboardList size={20} />} />
-              <KpiCard title="Job Cards Created" value={dashboardMetrics.jobCardsCreated} icon={<FileText size={20} />} />
-            </div>
-            <Card className="bg-white shadow-lg shadow-slate-200/50 rounded-2xl">
-              <CardHeader>
-                <CardTitle className="text-violet-600">Top 5 Parties by Order Volume</CardTitle>
-                <CardDescription>Shows which parties have the most production orders.</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[350px] p-2 flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={topPartiesChartData} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis type="number" allowDecimals={false} stroke="#94a3b8" fontSize={12}/>
-                    <YAxis dataKey="name" type="category" width={100} interval={0} stroke="#94a3b8" fontSize={12}/>
-                    <Tooltip 
-                      cursor={{ fill: 'rgba(139, 92, 246, 0.05)' }} 
-                      contentStyle={{
-                        background: 'white',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '0.75rem',
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                      }}
-                    />
-                    <Bar dataKey="count" name="Number of Orders" fill={COLORS.primary} barSize={25} radius={[0, 8, 8, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="orders">
-            <DataTable
-              title="Production Orders"
-              description="All orders scheduled for production, sorted from newest to oldest."
-              data={filteredProductionOrders}
-              columns={[
-                { key: "deliveryOrderNo", header: "Delivery Order No." },
-                { key: "partyName", header: "Party Name" },
-                { key: "productName", header: "Product Name" },
-                { key: "orderQuantity", header: "Order Qty" },
-                { key: "expectedDeliveryDate", header: "Expected Delivery" },
-                {
-                  key: "priority",
-                  header: "Priority",
-                  render: (item) => (
-                    <Badge variant={PRIORITY_BADGE_VARIANT[item.priority] || 'default'}>{item.priority}</Badge>
-                  ),
-                },
-                { key: "note", header: "Note" },
-              ]}
-            />
-          </TabsContent>
-          <TabsContent value="kitting">
-            <DataTable
-              title="Full Kitting History"
-              description="Records of all verified kitting compositions, sorted from latest to oldest."
-              data={filteredKittingHistory}
-              columns={[
-                { key: "timestamp", header: "Verified At" },
-                { key: "compositionNumber", header: "Composition No." },
-                { key: "deliveryOrderNo", header: "Delivery Order No." },
-                { key: "productName", header: "Product Name" },
-                { key: "sellingPrice", header: "Selling Price", render: (item) => `₹${item.sellingPrice.toFixed(2)}` },
-                { key: "gpPercentage", header: "GP %" },
-                {
-                  key: "rawMaterials",
-                  header: "Raw Materials",
-                  render: (item) => (
-                    <Button variant="outline" size="sm" className="h-8 text-violet-600 border-violet-300 hover:bg-violet-50 hover:text-violet-600" onClick={() => setViewingKittingDetails(item)}>
-                      <Eye className="h-3.5 w-3.5 mr-1.5" />
-                      View ({item.rawMaterials.length})
-                    </Button>
-                  ),
-                },
-              ]}
-            />
-          </TabsContent>
-          <TabsContent value="job-cards">
-            <DataTable
-              title="Job Card History"
-              description="All created job cards, sorted from newest to oldest."
-              data={filteredJobCards}
-              columns={[
-                { key: "timestamp", header: "Timestamp" },
-                { key: "jobCardNo", header: "Job Card No." },
-                { key: "firmName", header: "Firm Name" },
-                { key: "supervisorName", header: "Supervisor" },
-                { key: "deliveryOrderNo", header: "Delivery Order No." },
-                { key: "partyName", header: "Party Name" },
-                { key: "productName", header: "Product" },
-                { key: "orderQuantity", header: "Quantity" },
-                { key: "dateOfProduction", header: "Prod. Date" },
-                { key: "shift", header: "Shift" },
-                { key: "note", header: "Note" },
-              ]}
-            />
-          </TabsContent>
-          <TabsContent value="production">
-            <DataTable
-              title="Actual Production History"
-              description="Records of all actual production runs, sorted from latest to oldest."
-              data={filteredProduction}
-              columns={[
-                { key: "timestamp", header: "Timestamp" },
-                { key: "jobCardNo", header: "Job Card No." },
-                { key: "firmName", header: "Firm Name" },
-                { key: "dateOfProduction", header: "Prod. Date" },
-                { key: "supervisorName", header: "Supervisor" },
-                { key: "productName", header: "Product Name" },
-                { key: "quantityFG", header: "Quantity FG" },
-                { key: "serialNumber", header: "Serial No." },
-                { key: "machineHours", header: "Machine Hours" },
-                {
-                  key: "rawMaterials",
-                  header: "Raw Materials",
-                  render: (item) => (
-                    <Button variant="outline" size="sm" className="h-8 text-violet-600 border-violet-300 hover:bg-violet-50 hover:text-violet-600" onClick={() => setViewingProductionMaterials(item)}>
-                      <Eye className="h-3.5 w-3.5 mr-1.5" />
-                      View ({item.rawMaterials.length})
-                    </Button>
-                  ),
-                },
-              ]}
-            />
-          </TabsContent>
-        </Tabs>
-        <Dialog open={!!viewingKittingDetails} onOpenChange={(isOpen) => !isOpen && setViewingKittingDetails(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="text-violet-600">Raw Material Details: {viewingKittingDetails?.compositionNumber}</DialogTitle>
-              <DialogDescription>A detailed breakdown of all raw materials for this kitting record.</DialogDescription>
-            </DialogHeader>
-            <div className="mt-4 max-h-[60vh] overflow-y-auto pr-2">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Raw Material Name</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {viewingKittingDetails?.rawMaterials.map((material, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{material.name}</TableCell>
-                      <TableCell className="text-right">{material.quantity}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={!!viewingProductionMaterials} onOpenChange={(isOpen) => !isOpen && setViewingProductionMaterials(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="text-violet-600">Raw Material Details: {viewingProductionMaterials?.jobCardNo}</DialogTitle>
-              <DialogDescription>A detailed breakdown of all raw materials for this production run.</DialogDescription>
-            </DialogHeader>
-            <div className="mt-4 max-h-[60vh] overflow-y-auto pr-2">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Raw Material Name</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {viewingProductionMaterials?.rawMaterials.map((material, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{material.name}</TableCell>
-                      <TableCell className="text-right">{material.quantity}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </main>
+      </div>
+
+      {/* METRICS GRID */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard
+          title="Total Orders"
+          value={metrics.totalOrders}
+          icon={ClipboardList}
+          trend="+12% from last month"
+          trendUp={true}
+          color="text-blue-600"
+          bgColor="bg-blue-100"
+        />
+        <SummaryCard
+          title="Pending Process"
+          value={metrics.pendingOrders}
+          icon={Activity}
+          trend={`${metrics.pendingOrders} waiting`}
+          trendUp={false}
+          color="text-amber-600"
+          bgColor="bg-amber-100"
+        />
+        <SummaryCard
+          title="Active Production"
+          value={metrics.activeProduction}
+          icon={Factory}
+          trend="Currently running"
+          trendUp={true}
+          color="text-purple-600"
+          bgColor="bg-purple-100"
+        />
+        <SummaryCard
+          title="Total Output"
+          value={metrics.completedProduction}
+          icon={PackageCheck}
+          trend="Completed Units"
+          trendUp={true}
+          color="text-emerald-600"
+          bgColor="bg-emerald-100"
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+
+        {/* LEFT COLUMN - MAIN CHARTS (Span 4) */}
+        <div className="col-span-4 space-y-4">
+
+          {/* PRODUCTION TREND */}
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-slate-800">Production Output (Last 7 Days)</CardTitle>
+              <CardDescription>Daily finished goods quantity</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={productionTrendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorQty" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Area type="monotone" dataKey="quantity" stroke="#8B5CF6" strokeWidth={3} fillOpacity={1} fill="url(#colorQty)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* TOP PARTIES CHART */}
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-slate-800">Top Parties by Volume</CardTitle>
+              <CardDescription>Clients with highest order count</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topPartiesData} layout="vertical" margin={{ top: 0, right: 30, left: 60, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" width={100} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Bar dataKey="count" fill="#8B5CF6" radius={[0, 4, 4, 0]} barSize={32}>
+                    {topPartiesData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* RIGHT COLUMN - SECONDARY CHARTS & FEED (Span 3) */}
+        <div className="col-span-3 space-y-4">
+
+          {/* PRIORITY DISTRIBUTION */}
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-slate-800">Order Priority</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={priorityData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {priorityData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend verticalAlign="bottom" height={36} />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* RECENT ACTIVITY */}
+          <Card className="shadow-sm border-slate-200 flex flex-col h-[500px]">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <Activity className="h-5 w-5 text-indigo-500" />
+                Recent Activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-auto pr-2">
+              <div className="space-y-4">
+                {recentActivities.map((activity) => (
+                  <div key={activity.id} className="flex items-start gap-4 pb-4 border-b border-slate-100 last:border-0 last:pb-0">
+                    <div className={cn("p-2 rounded-full shrink-0", activity.bg)}>
+                      <div className={cn("h-4 w-4", activity.color)} />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-slate-800 leading-none">{activity.title}</p>
+                      <p className="text-xs text-slate-500">{activity.subtitle}</p>
+                      <p className="text-[10px] text-slate-400 capitalize">{activity.date ? format(activity.date, 'MMM dd, HH:mm') : 'N/A'}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+        </div>
+      </div>
     </div>
   )
 }
 
 // --- HELPER COMPONENTS ---
-const KpiCard = ({ title, value, icon }: { title: string; value: string | number; icon: React.ReactNode;}) => (
-  <Card className="bg-white shadow-lg shadow-slate-200/50 rounded-2xl transition-all hover:shadow-violet-100 hover:-translate-y-1">
-    <CardHeader className="pb-2">
-      <div className="flex items-start justify-between">
+
+function SummaryCard({ title, value, icon: Icon, trend, trendUp, color, bgColor }: any) {
+  return (
+    <Card className="shadow-sm border-slate-200">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-slate-500">{title}</CardTitle>
-        <div className="p-2 bg-violet-50 rounded-lg text-violet-500">{icon}</div>
-      </div>
-    </CardHeader>
-    <CardContent>
-      <div className="text-3xl font-bold text-slate-800">{value}</div>
-    </CardContent>
-  </Card>
-)
-
-const SelectWithLabel = ({ label, value, onValueChange, placeholder, options }: { label: string; value: string; onValueChange: (value: string) => void; placeholder: string; options: string[] }) => (
-  <div className="space-y-2">
-    <Label className="text-sm font-medium text-slate-700">{label}</Label>
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger className="w-full bg-white h-10 border-slate-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500">
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option} value={option}>
-            {option}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  </div>
-)
-
-const DatePickerWithLabel = ({ label, date, setDate, placeholder }: { label: string; date: Date | undefined; setDate: (date: Date | undefined) => void; placeholder: string }) => (
-  <div className="space-y-2">
-    <Label className="text-sm font-medium text-slate-700">{label}</Label>
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal h-10 rounded-lg border-slate-300", !date && "text-muted-foreground")}>
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "PPP") : <span>{placeholder}</span>}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0">
-        <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
-      </PopoverContent>
-    </Popover>
-  </div>
-)
-
-const DataTable = ({ title, description, data, columns }: { title: string; description: string; data: any[]; columns: { key: string; header: string; render?: (item: any) => React.ReactNode }[] }) => (
-  <Card className="bg-white shadow-lg shadow-slate-200/50 rounded-2xl overflow-hidden">
-    <CardHeader>
-      <CardTitle className="text-violet-600">{title}</CardTitle>
-      <CardDescription>{description}</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <div className="border rounded-xl">
-        <ScrollArea className="h-[600px]">
-          <Table>
-            <TableHeader className="sticky top-0 bg-slate-50 z-10">
-              <TableRow>
-                {columns.map((col) => (
-                  <TableHead key={col.key} className="text-slate-600 font-semibold">{col.header}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.length > 0 ? (
-                data.map((item, index) => (
-                  <TableRow key={item.id || index} className="hover:bg-slate-50/70 transition-colors">
-                    {columns.map((col) => (
-                      <TableCell key={col.key} className="py-3 text-sm text-slate-600">
-                        {col.render ? col.render(item) : item[col.key]}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center text-slate-500">
-                    No results found for your current filters.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </ScrollArea>
-      </div>
-    </CardContent>
-  </Card>
-)
+        <div className={cn("p-2 rounded-lg", bgColor)}>
+          <Icon className={cn("h-4 w-4", color)} />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold text-slate-900">{value}</div>
+        <p className="text-xs text-slate-500 mt-1 flex items-center">
+          {trendUp ? <ArrowUpRight className="mr-1 h-3 w-3 text-emerald-500" /> : <ArrowDownRight className="mr-1 h-3 w-3 text-red-500" />}
+          <span className={trendUp ? "text-emerald-500" : "text-slate-500"}>{trend}</span>
+        </p>
+      </CardContent>
+    </Card>
+  )
+}

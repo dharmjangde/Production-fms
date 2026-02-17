@@ -99,7 +99,6 @@ export default function TallyPage() {
       const processGvizTable = (table: any) => {
         if (!table || !table.rows || table.rows.length === 0) return [];
         return table.rows
-          .slice(1) // Skip header row
           .map((row: GvizRow) => {
             if (!row || !row.c) return null;
             const rowData: { [key: string]: any } = {};
@@ -111,7 +110,7 @@ export default function TallyPage() {
           .filter(Boolean);
       };
 
-      const actualProductionRows = processGvizTable(actualProductionTable);
+      const actualProductionRows = processGvizTable(actualProductionTable).slice(1);
       const jobCardsRows = processGvizTable(jobCardsTable);
 
       // Create a lookup Map from the JobCards sheet for fast joining
@@ -134,7 +133,7 @@ export default function TallyPage() {
       const allItems = actualProductionRows.map((row) => {
         const jobCardKey = String(row.col1 || "").trim().toUpperCase();
         const jobCardInfo = jobCardsMap.get(jobCardKey) || { deliveryOrderNo: "N/A", productName: "N/A", quantity: 0 };
-        
+
         return {
           jobCardNo: String(row.col1 || ""),
           deliveryOrderNo: jobCardInfo.deliveryOrderNo,
@@ -413,7 +412,7 @@ export default function TallyPage() {
           </Tabs>
         </CardContent>
       </Card>
-      
+
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>

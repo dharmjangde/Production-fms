@@ -47,6 +47,7 @@ const PAGES_AVAILABLE = [
     { pageid: "", pagename: "Dashboard" },
     { pageid: "orders", pagename: "Orders" },
     { pageid: "full-kitting", pagename: "Full Kitting" },
+    { pageid: "lab-test", pagename: "Lab Test" }, // Add this line
     { pageid: "job-cards", pagename: "Job Cards" },
     { pageid: "production", pagename: "Production" },
     { pageid: "lab-testing1", pagename: "Lab Test 1" },

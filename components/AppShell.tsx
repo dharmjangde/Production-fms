@@ -26,7 +26,8 @@ import { cn } from "@/lib/utils" // Import cn for conditional class styling
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/orders", label: "Orders", icon: Truck },
-  { href: "/full-kitting", label: "Full Kitting", icon: Boxes },
+  { href: "/full-kitting", label: "Composition", icon: Boxes },
+  { href: "/lab-test", label: "Test Before Production", icon: Settings }, // Add this line
   { href: "/job-cards", label: "Job Cards", icon: ClipboardList },
   { href: "/production", label: "Production", icon: Factory },
   { href: "/lab-testing1", label: "Lab Test 1", icon: FlaskConical },
@@ -68,6 +69,7 @@ function Sidebar({ isMinimized, toggleMinimize }: { isMinimized: boolean; toggle
           <Link
             key={item.href}
             href={item.href}
+            prefetch={false}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
               "text-gray-700 hover:bg-purple-100", // Darker text, light purple hover
@@ -86,6 +88,7 @@ function Sidebar({ isMinimized, toggleMinimize }: { isMinimized: boolean; toggle
         <div className="mt-auto pt-2">
           <Link
             href="/settings"
+            prefetch={false}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
               "text-gray-700 hover:bg-purple-100", // Darker text, light purple hover

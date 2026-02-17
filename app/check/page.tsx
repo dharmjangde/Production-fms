@@ -155,11 +155,12 @@ export default function CheckPage() {
 
       const processGvizTable = (table: any) => {
         if (!table || !table.rows || table.rows.length === 0) return []
+        // Skip the first row (header row)
         return table.rows
           .slice(1)
           .map((row: GvizRow, index: number) => {
             if (!row.c || !row.c.some((cell) => cell && cell.v !== null)) return null
-            const rowData: { [key: string]: any } = { _originalIndex: index + 1 }
+            const rowData: { [key: string]: any } = { _originalIndex: index + 2 }
             row.c.forEach((cell, cellIndex) => {
               rowData[`col${cellIndex}`] = cell ? cell.v : null
             })
@@ -172,14 +173,30 @@ export default function CheckPage() {
       const masterDataRows = processGvizTable(masterTable)
       const jobCardsRows = processGvizTable(jobCardsTable)
 
-      // --- Pending Logic: Column BF (col57) is NOT NULL, Column BG (col58) is NULL ---
+
       const pendingData: PendingCheckItem[] = actualProductionRows
         .filter(
           (row: { [key: string]: any }) =>
+
+            // ✅ MUST have Job Card No (Column B)
+            row.col1 !== null &&
+            row.col1 !== undefined &&
+            String(row.col1).trim() !== "" &&
+
+            // ✅ Planned/Completed Test present (BF)
             row.col57 !== null &&
+            row.col57 !== undefined &&
             String(row.col57).trim() !== "" &&
-            (row.col58 === null || String(row.col58).trim() === ""),
+
+            // ✅ Verification NOT yet done (BG empty)
+            (
+              row.col58 === null ||
+              row.col58 === undefined ||
+              String(row.col58).trim() === ""
+            )
         )
+
+
         .map((row: { [key: string]: any }) => {
           const jobCard = jobCardsRows.find((jc: { [key: string]: any }) => String(jc.col1 || '').trim() === String(row.col1 || '').trim())
 
@@ -208,6 +225,7 @@ export default function CheckPage() {
         )
         .map((row: { [key: string]: any }) => {
           const jobCard = jobCardsRows.find((jc: { [key: string]: any }) => String(jc.col1 || '').trim() === String(row.col1 || '').trim())
+
           const verifiedAt = parseGvizDate(row.col58)
 
           return {
@@ -469,7 +487,7 @@ export default function CheckPage() {
                                     <Badge
                                       variant={
                                         check[col.dataKey as keyof PendingCheckItem] === "Pass" ||
-                                        check[col.dataKey as keyof PendingCheckItem] === "Accepted"
+                                          check[col.dataKey as keyof PendingCheckItem] === "Accepted"
                                           ? "default"
                                           : "destructive"
                                       }

@@ -125,9 +125,9 @@ export default function CheckPage() {
     if (!table || !table.rows) return []
     return table.rows.map((row: any, index: number) => {
       const rowData: { [key: string]: any } = { _rowIndex: index + 2 }
-      ;(row.c || []).forEach((cell: any, cellIndex: number) => {
-        rowData[`col${cellIndex}`] = cell ? (cell.f ?? cell.v) : null
-      })
+        ; (row.c || []).forEach((cell: any, cellIndex: number) => {
+          rowData[`col${cellIndex}`] = cell ? (cell.f ?? cell.v) : null
+        })
       return rowData
     })
   }
@@ -418,13 +418,12 @@ export default function CheckPage() {
       // **FIX**: Use updateColumns with rowIndex instead of updateByJobCard
       const productionUpdateBody = new URLSearchParams({
         sheetName: PRODUCTION_SHEET,
-        action: "updateColumns",
+        action: "updateCells",
         rowIndex: selectedCheck._rowIndex.toString(),
-        columnUpdates: JSON.stringify({
+        cellUpdates: JSON.stringify({
           [FULL_KITTING_COLUMNS.verificationTimestamp]: format(submissionDate, "dd/MM/yyyy HH:mm:ss"),
         }),
       })
-
       const productionRes = await fetch(WEB_APP_URL, { method: "POST", body: productionUpdateBody })
       const productionResult = await productionRes.json()
       if (!productionResult.success) throw new Error(productionResult.error || "Failed to update Production sheet.")
@@ -497,7 +496,7 @@ export default function CheckPage() {
           <CardDescription>Verify items after the full kitting process.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
             <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6">
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4" /> Pending Checks{" "}

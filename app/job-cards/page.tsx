@@ -65,6 +65,7 @@ const WEB_APP_URL =
 const PRODUCTION_SHEET = "Production"
 const JOBCARDS_SHEET = "JobCards"
 const MASTER_SHEET = "Master"
+const COSTING_RESPONSE_SHEET = "Costing Response"
 
 // Column definitions - Updated to remove Note column from pending and Notes column from history
 const PENDING_ORDERS_COLUMNS_META = [
@@ -116,6 +117,8 @@ export default function JobCardsPage() {
   const { fetchData: fetchProductionData } = useGoogleSheet(PRODUCTION_SHEET)
   const { fetchData: fetchJobCardsData } = useGoogleSheet(JOBCARDS_SHEET)
   const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET)
+  const { fetchData: fetchCostingResponseData } = useGoogleSheet(COSTING_RESPONSE_SHEET)
+
 
   useEffect(() => {
     const initializeVisibility = (columnsMeta: any[]) => {
@@ -134,11 +137,13 @@ export default function JobCardsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [productionTable, jobCardsTable, masterTable] = await Promise.all([
+      const [productionTable, jobCardsTable, masterTable, costingTable] = await Promise.all([
         fetchProductionData(),
         fetchJobCardsData(),
         fetchMasterData(),
+        fetchCostingResponseData(), // ✅ ADD
       ])
+
 
       const processGvizTable = (table: any, rowIndexOffset = 2) => {
         if (!table || !table.rows || table.rows.length < 1) return []
@@ -166,27 +171,48 @@ export default function JobCardsPage() {
       const allProductionData = processGvizTable(productionTable)
       const allJobCardsData = processGvizTable(jobCardsTable)
       const allMasterData = processGvizTable(masterTable)
+      const allCostingData = processGvizTable(costingTable)
 
-      // Updated filtering logic: col X not null, col Y null
-      const filteredRows = allProductionData.filter((row) => {
-        const hasColX = row.X !== null && String(row.X).trim() !== ""
-        const emptyColY = !row.Y || String(row.Y).trim() === ""
-        return hasColX && emptyColY
+
+      const filteredRows = allCostingData.filter((row) => {
+        const hasPlanned2 = row.BO !== null && String(row.BO).trim() !== ""
+        const emptyActual3 = !row.BP || String(row.BP).trim() === ""
+        return hasPlanned2 && emptyActual3
       })
 
-      // Updated data mapping for pending orders
-      const processedOrders: Order[] = filteredRows.map((row) => ({
-        key: row._rowIndex,
-        _rowIndex: row._rowIndex,
-        deliveryOrderNo: String(row.B || "").trim(),
-        firmName: String(row.C || "").trim(),
-        partyName: String(row.D || "").trim(),
-        productName: String(row.E || "").trim(),
-        orderQuantity: Number(row.F || 0),
-        expectedDeliveryDate: row.G ? format(parseGvizDate(row.G), "dd/MM/yyyy") : "", // Col G from Production
-        priority: String(row.H || ""), // Col H from Production
-        note: String(row.M || ""), // Keep for data integrity but won't display
-      }))
+      const processedOrders: Order[] = filteredRows.map((row) => {
+        const deliveryOrderNo = String(row.C || "").trim()
+
+        // 🔁 find matching Production row
+        const prodRow = allProductionData.find(
+          (p) => String(p.B || "").trim() === deliveryOrderNo
+        )
+
+        return {
+          key: row._rowIndex,
+          _rowIndex: row._rowIndex,
+          deliveryOrderNo,
+
+          firmName: prodRow ? String(prodRow.C || "") : "",
+          partyName: prodRow ? String(prodRow.D || "") : "",
+
+          productName: String(row.D || "").trim(),
+
+          orderQuantity: prodRow
+            ? Number(prodRow.F || 0)
+            : Number(row.F || 0),
+
+          expectedDeliveryDate:
+            prodRow && prodRow.G
+              ? format(parseGvizDate(prodRow.G), "dd/MM/yyyy")
+              : "",
+
+          priority: prodRow ? String(prodRow.H || "") : "",
+
+          note: "",
+        }
+      })
+
 
       setPendingOrders(processedOrders)
 
@@ -506,9 +532,8 @@ export default function JobCardsPage() {
                               {visiblePendingOrdersColumns.map((column) => (
                                 <TableCell
                                   key={column.dataKey}
-                                  className={`whitespace-nowrap text-xs ${
-                                    column.dataKey === "deliveryOrderNo" ? "font-medium text-primary" : "text-gray-700"
-                                  }`}
+                                  className={`whitespace-nowrap text-xs ${column.dataKey === "deliveryOrderNo" ? "font-medium text-primary" : "text-gray-700"
+                                    }`}
                                 >
                                   {column.dataKey === "actionColumn" ? (
                                     <Button
@@ -620,9 +645,8 @@ export default function JobCardsPage() {
                               {visibleHistoryJobCardsColumns.map((column) => (
                                 <TableCell
                                   key={column.dataKey}
-                                  className={`whitespace-nowrap text-xs ${
-                                    column.dataKey === "jobCardNo" ? "font-medium text-primary" : "text-gray-700"
-                                  }`}
+                                  className={`whitespace-nowrap text-xs ${column.dataKey === "jobCardNo" ? "font-medium text-primary" : "text-gray-700"
+                                    }`}
                                 >
                                   {card[column.dataKey as keyof JobCard] || "-"}
                                 </TableCell>
