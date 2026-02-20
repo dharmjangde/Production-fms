@@ -53,7 +53,8 @@ const COSTING_RESPONSE_COLUMNS = {
   bdValue: 65,            // Column BM: BD
   apValue: 66,            // Column BN: AP
   testedBy: 67,           // Column BO: Tested By
-  dateOfTest: 68,         // Column BP: Date Of Test
+  dateOfTest: 68,
+  remarks: 69,            // Column BP: Remarks
 }
 
 // Type Definitions
@@ -86,6 +87,7 @@ interface CostingItem {
   apValue: string
   testedBy: string
   dateOfTest: string
+  remarks: string
 }
 
 interface HistoryItem extends CostingItem { }
@@ -141,6 +143,7 @@ const HISTORY_COLUMNS_META = [
   { header: "BD", dataKey: "bdValue", toggleable: true },
   { header: "AP", dataKey: "apValue", toggleable: true },
   { header: "Planned 1", dataKey: "planned1", toggleable: true },
+  { header: "Remarks", dataKey: "remarks", toggleable: true },
 
   // { header: "Tested By", dataKey: "testedBy", toggleable: true },
   // { header: "Date Of Test", dataKey: "dateOfTest", toggleable: true },
@@ -155,6 +158,7 @@ const initialFormState = {
   plc: "",
   bdValue: "",
   apValue: "",
+  remarks: "",
 }
 
 
@@ -203,7 +207,7 @@ export default function LabTestingPage() {
           'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
           'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL',
           'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV', 'AW', 'AX', 'AY', 'AZ', 'BA', 'BB', 'BC',
-          'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BK', 'BL', 'BM', 'BN', 'BO', 'BP'
+          'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BK', 'BL', 'BM', 'BN', 'BO', 'BP','BQ'
         ]
 
         row.c.forEach((cell, cellIndex) => {
@@ -284,6 +288,8 @@ export default function LabTestingPage() {
           apValue: String(row.BN || ""),
           testedBy: String(row.BO || ""),
           dateOfTest: String(row.BP || ""),
+          remarks: String(row.BQ || ""),      // NEW: Map remarks column
+
         }
         return item
       })
@@ -373,6 +379,8 @@ export default function LabTestingPage() {
       plc: test.plc || "",
       bdValue: test.bdValue || "",
       apValue: test.apValue || "",
+      remarks: test.remarks || "",  // NEW
+
     })
     setIsDialogOpen(true)   // ✅ ADD THIS
 
@@ -403,6 +411,7 @@ export default function LabTestingPage() {
       if (formData.plc) columnUpdates["col64"] = formData.plc // plc - column BL
       if (formData.bdValue) columnUpdates["col65"] = formData.bdValue // bdValue - column BM
       if (formData.apValue) columnUpdates["col66"] = formData.apValue // apValue - column BN
+     if (formData.remarks) columnUpdates["col69"] = formData.remarks // remarks - column BQ (NEW)
 
       console.log("Updating row:", selectedTest._rowIndex, "with updates:", columnUpdates)
 
@@ -727,158 +736,121 @@ export default function LabTestingPage() {
               </div>
             </div>
 
-            {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Date of Test *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !formData.dateOfTest && "text-muted-foreground",
-                        formErrors.dateOfTest && "border-red-500",
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.dateOfTest ? format(formData.dateOfTest, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={formData.dateOfTest}
-                      onSelect={(d) => handleFormChange("dateOfTest", d)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                {formErrors.dateOfTest && <p className="text-xs text-red-600 mt-1">{formErrors.dateOfTest}</p>}
-              </div>
+            
+            {/* Form Fields - Reorganized with CCS at 110 in second row */}
+<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+  {/* First Row */}
+  <div className="space-y-2">
+    <Label htmlFor="wc">W/C</Label>
+    <Input
+      id="wc"
+      value={formData.wc}
+      onChange={(e) => handleFormChange("wc", e.target.value)}
+      placeholder="Enter W/C"
+    />
+  </div>
 
-              <div className="space-y-2">
-                <Label>Test Status *</Label>
-                <Select value={formData.testStatus} onValueChange={(v) => handleFormChange("testStatus", v)}>
-                  <SelectTrigger className={formErrors.testStatus ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pass">Pass</SelectItem>
-                    <SelectItem value="Fail">Fail</SelectItem>
-                  </SelectContent>
-                </Select>
-                {formErrors.testStatus && <p className="text-xs text-red-600 mt-1">{formErrors.testStatus}</p>}
-              </div>
+  <div className="space-y-2">
+    <Label htmlFor="ist">IST</Label>
+    <Input
+      id="ist"
+      value={formData.ist}
+      onChange={(e) => handleFormChange("ist", e.target.value)}
+      placeholder="Enter IST"
+    />
+  </div>
 
-              <div className="space-y-2">
-                <Label>Tested By *</Label>
-                <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
-                  <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select tester" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {testedByOptions.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {opt}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {formErrors.testedBy && <p className="text-xs text-red-600 mt-1">{formErrors.testedBy}</p>}
-              </div>
-            </div> */}
+  <div className="space-y-2">
+    <Label htmlFor="fst">FST</Label>
+    <Input
+      id="fst"
+      value={formData.fst}
+      onChange={(e) => handleFormChange("fst", e.target.value)}
+      placeholder="Enter FST"
+    />
+  </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="wc">W/C</Label>
-                <Input
-                  id="wc"
-                  value={formData.wc}
-                  onChange={(e) => handleFormChange("wc", e.target.value)}
-                  placeholder="Enter W/C"
-                />
-              </div>
+  <div className="space-y-2">
+    <Label htmlFor="plc">PLC</Label>
+    <Input
+      id="plc"
+      type="number"
+      step="0.01"
+      value={formData.plc}
+      onChange={(e) => handleFormChange("plc", e.target.value)}
+      placeholder="Enter PLC"
+    />
+  </div>
+</div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ist">IST</Label>
-                <Input
-                  id="ist"
-                  value={formData.ist}
-                  onChange={(e) => handleFormChange("ist", e.target.value)}
-                  placeholder="Enter IST"
-                />
-              </div>
+{/* Second Row - CCS at 110 and other fields */}
+<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+  <div className="space-y-2">
+    <Label htmlFor="ccsAt110">CCS at 110 *</Label>
+    <Input
+      id="ccsAt110"
+      type="number"
+      step="0.01"
+      value={formData.ccsAt110}
+      onChange={(e) => handleFormChange("ccsAt110", e.target.value)}
+      placeholder="Enter CCS at 110"
+      className="border-purple-300 focus:border-purple-600"
+    />
+  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="fst">FST</Label>
-                <Input
-                  id="fst"
-                  value={formData.fst}
-                  onChange={(e) => handleFormChange("fst", e.target.value)}
-                  placeholder="Enter FST"
-                />
-              </div>
+  <div className="space-y-2">
+    <Label htmlFor="ccsAt1100">CCS at 1100</Label>
+    <Input
+      id="ccsAt1100"
+      type="number"
+      step="0.01"
+      value={formData.ccsAt1100}
+      onChange={(e) => handleFormChange("ccsAt1100", e.target.value)}
+      placeholder="Enter CCS at 1100"
+    />
+  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ccsAt110">CCS at 110</Label>
-                <Input
-                  id="ccsAt110"
-                  type="number"
-                  step="0.01"
-                  value={formData.ccsAt110}
-                  onChange={(e) => handleFormChange("ccsAt110", e.target.value)}
-                  placeholder="Enter CCS at 110"
-                />
-              </div>
+  <div className="space-y-2">
+    <Label htmlFor="bdValue">BD</Label>
+    <Input
+      id="bdValue"
+      type="number"
+      step="0.01"
+      value={formData.bdValue}
+      onChange={(e) => handleFormChange("bdValue", e.target.value)}
+      placeholder="Enter BD"
+    />
+  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ccsAt1100">CCS at 1100</Label>
-                <Input
-                  id="ccsAt1100"
-                  type="number"
-                  step="0.01"
-                  value={formData.ccsAt1100}
-                  onChange={(e) => handleFormChange("ccsAt1100", e.target.value)}
-                  placeholder="Enter CCS at 1100"
-                />
-              </div>
+  <div className="space-y-2">
+    <Label htmlFor="apValue">AP</Label>
+    <Input
+      id="apValue"
+      type="number"
+      step="0.01"
+      value={formData.apValue}
+      onChange={(e) => handleFormChange("apValue", e.target.value)}
+      placeholder="Enter AP"
+    />
+  </div>
+</div>
 
-              <div className="space-y-2">
-                <Label htmlFor="plc">PLC</Label>
-                <Input
-                  id="plc"
-                  type="number"
-                  step="0.01"
-                  value={formData.plc}
-                  onChange={(e) => handleFormChange("plc", e.target.value)}
-                  placeholder="Enter PLC"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bdValue">BD</Label>
-                <Input
-                  id="bdValue"
-                  type="number"
-                  step="0.01"
-                  value={formData.bdValue}
-                  onChange={(e) => handleFormChange("bdValue", e.target.value)}
-                  placeholder="Enter BD"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="apValue">AP</Label>
-                <Input
-                  id="apValue"
-                  type="number"
-                  step="0.01"
-                  value={formData.apValue}
-                  onChange={(e) => handleFormChange("apValue", e.target.value)}
-                  placeholder="Enter AP"
-                />
-              </div>
-            </div>
+{/* Third Row - Remarks (full width) */}
+<div className="grid grid-cols-1 gap-4">
+  <div className="space-y-2">
+    <Label htmlFor="remarks" className="flex items-center gap-2">
+      <span>Remarks</span>
+      <span className="text-xs text-gray-500">(Optional)</span>
+    </Label>
+    <Input
+      id="remarks"
+      value={formData.remarks}
+      onChange={(e) => handleFormChange("remarks", e.target.value)}
+      placeholder="Enter any remarks or notes about the test"
+      className="w-full"
+    />
+  </div>
+</div>
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>

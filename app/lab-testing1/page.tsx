@@ -101,6 +101,8 @@ const formatMachineHours = (hours) => {
   return hoursStr
 }
 
+// ✅ Convert any GViz Date(...) OR normal value to plain text
+
 // Column Mapping for Lab Test 1 Data
 const LAB_TEST_1_COLUMNS = {
   test1CompletedAt: 20, // Column T
@@ -150,8 +152,8 @@ const initialFormState = {
   testStatus: "",
   wcPercentage: "",
   testedBy: "",
-  initialSettingTime: { h: "", m: "", s: "" },
-  finalSettingTime: { h: "", m: "", s: "" },
+  initialSettingTime: "",
+  finalSettingTime: "",
   whatToBeMixed: "",
   flowOfMaterial: "",
   sieveAnalysis: "",
@@ -362,9 +364,14 @@ export default function LabTesting1Page() {
 
       setPendingTests(pendingData)
 
-      // Filter history: Column S filled and T filled
       const historyFiltered = jobCardDataRows
-        .filter((row) => row.S !== null && String(row.S).trim() !== "" && row.T !== null && String(row.T).trim() !== "")
+        .filter(
+          (row) =>
+            row.S !== null &&
+            String(row.S).trim() !== "" &&
+            row.T !== null &&
+            String(row.T).trim() !== ""
+        )
         .map((row) => ({
           _rowIndex: row._rowIndex,
           jobCardNo: String(row.B || ""),
@@ -372,17 +379,26 @@ export default function LabTesting1Page() {
           productName: String(row.G || ""),
           quantity: Number(row.H || 0),
           testStatus: String(row.V || ""),
-          dateOfTest: row.W ? format(parseGvizDate(row.W), "dd/MM/yyyy") : "",
+          dateOfTest: row.W ? (() => { try { return format(parseGvizDate(row.W), "dd/MM/yy") } catch { return String(row.W) } })() : "",
           testedBy: String(row.Y || ""),
           wcPercentage: String(row.X || ""),
-          finalSettingTime: row.AB ? formatMachineHours(row.AB) : "-",
-          initialSettingTime: row.Z ? formatMachineHours(row.Z) : "-",
-          whatToBeMixed: String(row.AC || ""),
+
+          // ✅ JUST FETCH & SHOW — strip leading apostrophe added during save
+          initialSettingTime: String(row.Z || "").replace(/^'/, ""),
+          finalSettingTime: String(row.AB || "").replace(/^'/, ""),
+          whatToBeMixed: String(row.AC || ""),   // ✅ FIXED
           flowOfMaterial: String(row.AA || ""),
           sieveAnalysisTest: String(row.AD || ""),
-          test1CompletedAt: parseGvizDate(row.T) ? format(parseGvizDate(row.T), "dd/MM/yy HH:mm") : String(row.T),
+
+          test1CompletedAt: row.T ? String(row.T) : "",
         }))
-        .sort((a, b) => new Date(b.test1CompletedAt).getTime() - new Date(a.test1CompletedAt).getTime())
+
+        .sort((a, b) => {
+          if (a.test1CompletedAt > b.test1CompletedAt) return -1
+          if (a.test1CompletedAt < b.test1CompletedAt) return 1
+          return 0
+        })
+
 
       setHistoryTests(historyFiltered)
 
@@ -418,16 +434,15 @@ export default function LabTesting1Page() {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleTimeInputChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: { ...prev[field], h: value },
-    }))
-  }
+  // const handleTimeInputChange = (field, value) => {
+  //   setFormData((prev) => ({
+  //     ...prev,
+  //     [field]: { ...prev[field], h: value },
+  //   }))
+  // }
 
   const validateForm = () => {
     const errors = {}
-    const timeRegex = /^(?:2[0-3]|[01]?[0-9]):[0-5]?[0-9]:[0-5]?[0-9]$/
 
     if (!formData.testStatus) errors.testStatus = "Status is required."
     if (!formData.dateOfTest) errors.dateOfTest = "Date of Test is required."
@@ -438,12 +453,12 @@ export default function LabTesting1Page() {
       errors.wcPercentage = "Percentage cannot be over 100."
     }
     if (!formData.testedBy) errors.testedBy = "Tested By is required."
-    if (formData.initialSettingTime.h && !timeRegex.test(formData.initialSettingTime.h)) {
-      errors.initialSettingTime = "Initial Setting Time must be in HH:MM:SS format."
-    }
-    if (formData.finalSettingTime.h && !timeRegex.test(formData.finalSettingTime.h)) {
-      errors.finalSettingTime = "Final Setting Time must be in HH:MM:SS format."
-    }
+    // if (formData.initialSettingTime.h && !timeRegex.test(formData.initialSettingTime.h)) {
+    //   errors.initialSettingTime = "Initial Setting Time must be in HH:MM:SS format."
+    // }
+    // if (formData.finalSettingTime.h && !timeRegex.test(formData.finalSettingTime.h)) {
+    //   errors.finalSettingTime = "Final Setting Time must be in HH:MM:SS format."
+    // }
 
     setFormErrors(errors)
     return Object.keys(errors).length === 0
@@ -456,20 +471,21 @@ export default function LabTesting1Page() {
     try {
       const jobCardNo = selectedProduction.jobCardNo.trim().toUpperCase()
       const timestamp = format(new Date(), "dd/MM/yyyy HH:mm:ss")
-
       const columnUpdates = {
         [LAB_TEST_1_COLUMNS.test1CompletedAt]: timestamp,
-        [LAB_TEST_1_COLUMNS.testStatus]: formData.testStatus,
+        [LAB_TEST_1_COLUMNS.testStatus]: String(formData.testStatus),
         [LAB_TEST_1_COLUMNS.dateOfTest]: format(formData.dateOfTest, "dd/MM/yyyy"),
-        [LAB_TEST_1_COLUMNS.wcPercentage]: formData.wcPercentage,
-        [LAB_TEST_1_COLUMNS.testedBy]: formData.testedBy,
-        [LAB_TEST_1_COLUMNS.initialSettingTime]: formData.initialSettingTime.h,
-        [LAB_TEST_1_COLUMNS.flowOfMaterial]: formData.flowOfMaterial,
-        [LAB_TEST_1_COLUMNS.finalSettingTime]: formData.finalSettingTime.h,
-        [LAB_TEST_1_COLUMNS.whatToBeMixed]: formData.whatToBeMixed,
-        [LAB_TEST_1_COLUMNS.sieveAnalysis]: formData.sieveAnalysis,
-      }
+        [LAB_TEST_1_COLUMNS.wcPercentage]: String(formData.wcPercentage),
+        [LAB_TEST_1_COLUMNS.testedBy]: String(formData.testedBy),
 
+        // 👇 FORCE TEXT
+        [LAB_TEST_1_COLUMNS.initialSettingTime]: `'${formData.initialSettingTime}`,
+        [LAB_TEST_1_COLUMNS.flowOfMaterial]: String(formData.flowOfMaterial),
+        [LAB_TEST_1_COLUMNS.finalSettingTime]: `'${formData.finalSettingTime}`,
+
+        [LAB_TEST_1_COLUMNS.whatToBeMixed]: String(formData.whatToBeMixed),
+        [LAB_TEST_1_COLUMNS.sieveAnalysis]: String(formData.sieveAnalysis),
+      }
       const jobCardBody = new URLSearchParams({
         sheetName: JOBCARDS_SHEET,
         action: "updateByJobCard",
@@ -888,36 +904,27 @@ export default function LabTesting1Page() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
               <div className="space-y-2">
-                <Label htmlFor="initialSettingTime">Initial Setting Time (HH:MM:SS)</Label>
+                <Label htmlFor="initialSettingTime">Initial Setting Time</Label>
                 <Input
                   id="initialSettingTime"
                   type="text"
-                  placeholder="e.g., 00:30:00"
-                  value={formData.initialSettingTime.h}
-                  onChange={(e) => handleTimeInputChange("initialSettingTime", e.target.value)}
-                  className={formErrors.initialSettingTime ? "border-red-500" : ""}
+                  placeholder="Enter time (e.g., 2, 30 min, 2 hours, etc.)"
+                  value={formData.initialSettingTime}
+                  onChange={(e) => handleFormChange("initialSettingTime", e.target.value)}
                 />
-                {formErrors.initialSettingTime && (
-                  <p className="text-xs text-red-600 mt-1">{formErrors.initialSettingTime}</p>
-                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="finalSettingTime">Final Setting Time (HH:MM:SS)</Label>
+                <Label htmlFor="finalSettingTime">Final Setting Time</Label>
                 <Input
                   id="finalSettingTime"
                   type="text"
-                  placeholder="e.g., 01:00:00"
-                  value={formData.finalSettingTime.h}
-                  onChange={(e) => handleTimeInputChange("finalSettingTime", e.target.value)}
-                  className={formErrors.finalSettingTime ? "border-red-500" : ""}
+                  placeholder="Enter time (e.g., 5, 1 hour, etc.)"
+                  value={formData.finalSettingTime}
+                  onChange={(e) => handleFormChange("finalSettingTime", e.target.value)}
                 />
-                {formErrors.finalSettingTime && (
-                  <p className="text-xs text-red-600 mt-1">{formErrors.finalSettingTime}</p>
-                )}
               </div>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Flow Of Material *</Label>

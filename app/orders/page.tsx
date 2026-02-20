@@ -68,7 +68,7 @@ const JOBCARD_COLUMNS_META = [
 export default function OrdersPage() {
   const [date, setDate] = useState<Date | undefined>()
   const [priority, setPriority] = useState("")
-  const [priorityOptions] = useState(["Normal", "High", "Urgent"])
+  const [priorityOptions] = useState(["Normal",  "Urgent"])
   const [loading, setLoading] = useState(false)
   const [fetchingData, setFetchingData] = useState(true)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -530,7 +530,7 @@ export default function OrdersPage() {
             <div className="flex items-center gap-2">
               <FileText className="h-6 w-6 text-purple-600" />
               <div>
-                <CardTitle className="text-gray-800">Job Card Management</CardTitle>
+                <CardTitle className="text-gray-800">Job Card Management </CardTitle>
                 <CardDescription className="text-gray-700">
                   Create and manage job cards for production orders
                 </CardDescription>

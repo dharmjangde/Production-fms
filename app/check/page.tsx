@@ -245,7 +245,7 @@ export default function CheckPage() {
 
       // Get Status options from Master Sheet Column D (index 3)
       const statuses: string[] = [
-        ...new Set(masterDataRows.map((row: { [key: string]: any }) => String(row.col3 || "")).filter(Boolean)),
+        ...new Set(masterDataRows.map((row: { [key: string]: any }) => String(row.col5 || "")).filter(Boolean)),
       ]
       setStatusOptions(statuses)
     } catch (err: any) {

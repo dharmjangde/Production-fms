@@ -44,7 +44,12 @@ interface ProductionItem {
 interface HistoryItem extends ProductionItem {
   rawMaterials: RawMaterial[]
   machineHours: string
+  remarks?: string  // Add this
+  productionTimestamp?: string
+  serialNumber?: string
+  quantityFG?: string
 }
+
 
 interface GvizRow {
   c: ({ v: any; f?: string } | null)[]
@@ -130,12 +135,14 @@ const HISTORY_COLUMNS_META = [
   { header: "Shift", dataKey: "shift", toggleable: true },
   { header: "Raw Materials", dataKey: "rawMaterials", toggleable: true },
   { header: "Machine Hours", dataKey: "machineHours", toggleable: true },
+  { header: "Remarks", dataKey: "remarks", toggleable: true }, // Add this
+  { header: "Serial No.", dataKey: "serialNumber", toggleable: true }, // Optional
 ]
-
 const initialFormData = {
   quantityFG: "",
   rawMaterials: [] as RawMaterial[],
   machineRunningHour: "",
+  remarks: "",
 }
 
 export default function ProductionPage() {
@@ -228,92 +235,145 @@ export default function ProductionPage() {
       const productionDataRows = processGvizTable(productionTable);
       const masterDataRows = processGvizTable(masterTable);
 
-      const actualProductionRecords = productionDataRows
-        .map((row) => {
-          const jobCardFromActualProd = String(row.B || "").trim()
-          if (!jobCardFromActualProd) return null
+      // Create a map of production records by Job Card No for easy lookup
+const actualProductionRecords = productionDataRows
+  .map((row) => {
+    const jobCardFromActualProd = String(row.B || "").trim()
+    if (!jobCardFromActualProd) return null
 
-          const materials = []
-          const materialColumns = ["I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO","AP","AQ","AR","AS","AT","AU","AV",]
-          for (let i = 0; i < materialColumns.length; i += 2) {
-            const nameCol = materialColumns[i]
-            const quantityCol = materialColumns[i + 1]
-            const name = row[nameCol]
-            const quantity = row[quantityCol]
-            if (name && String(name).trim() !== "" && String(name).trim() !== "null" && String(name).trim() !== "Raw Material Name") {
-              materials.push({ name: String(name).trim(), quantity: quantity || 0 })
-            }
-          }
-          
-          return {
-            jobCardNo: jobCardFromActualProd,
-            machineHours: row.AW ? String(row.AW).trim() : "-",
-            rawMaterials: materials,
-          }
+    // Extract all raw materials (20 pairs from column I to AV)
+    const materials = []
+    // Column I is index 8 (0-based), which corresponds to column I in sheet
+    // Raw materials are in pairs: Name at I, Quantity at J; Name at K, Quantity at L; etc.
+    for (let i = 0; i < 20; i++) {
+      const nameColIndex = 8 + (i * 2) // I (8), K (10), M (12), etc.
+      const quantityColIndex = 9 + (i * 2) // J (9), L (11), N (13), etc.
+      
+      // Convert column indices to column letters (simplified approach)
+      const nameCol = String.fromCharCode(73 + i) + (i > 0 ? '' : '') // This is simplified, better to use the actual column letters
+      
+      // Better approach: use the actual column letters from your data
+      const name = row[String.fromCharCode(73 + i)] // I, K, M, O, etc.
+      const quantity = row[String.fromCharCode(74 + i)] // J, L, N, P, etc.
+      
+      if (name && String(name).trim() !== "" && 
+          String(name).trim() !== "null" && 
+          String(name).trim() !== "Raw Material Name") {
+        materials.push({ 
+          name: String(name).trim(), 
+          quantity: quantity || 0 
         })
-        .filter(Boolean)
+      }
+    }
+    
+    return {
+      jobCardNo: jobCardFromActualProd,
+      timestamp: row.A ? String(row.A).trim() : "", // Column A: Timestamp
+      firmName: row.C ? String(row.C).trim() : "", // Column C: FIRM Name
+      dateOfProduction: row.D ? String(row.D).trim() : "", // Column D: Date Of Production
+      supervisorName: row.E ? String(row.E).trim() : "", // Column E: Name Of Supervisor
+      productName: row.F ? String(row.F).trim() : "", // Column F: Product Name
+      quantityFG: row.G ? String(row.G).trim() : "", // Column G: Quantity Of FG
+      serialNumber: row.H ? String(row.H).trim() : "", // Column H: Serial Number
+      machineHours: row.AW ? String(row.AW).trim() : "-", // Column AW: Machine Running hour
+      remarks: row.AX ? String(row.AX).trim() : "", // Column AX: Remarks1
+      rawMaterials: materials,
+    }
+  })
+  .filter(Boolean)
 
-      const pendingFiltered = jobCardDataRows.filter(
-        (row) => row.P !== null && String(row.P).trim() !== "" && (!row.Q || String(row.Q).trim() === ""),
-      )
+// Create a map for quick lookup by job card number
+const productionRecordsMap = new Map()
+actualProductionRecords.forEach(record => {
+  if (record.jobCardNo) {
+    productionRecordsMap.set(record.jobCardNo, record)
+  }
+})
 
-      const pending = pendingFiltered.map((row) => {
-        const productionRow = productionSheetRows.find(
-          (prodRow) => String(prodRow.B || "").trim() === String(row.E || "").trim(),
-        )
-        return {
-          _rowIndex: row._rowIndex,
-          jobCardNo: String(row.B || ""),
-          firmName: String(row.C || ""),
-          supervisorName: String(row.D || ""),
-          deliveryOrderNo: String(row.E || ""),
-          partyName: String(row.F || ""),
-          productName: String(row.G || ""),
-          orderQuantity: Number(row.H || 0),
-          dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
-          shift: String(row.J || ""),
-          notes: String(row.O || ""),
-          quantity: Number(row.H || 0),
-          expectedDeliveryDate:
-            productionRow && productionRow.G ? format(parseGvizDate(productionRow.G), "dd/MM/yyyy") : "",
-          priority: productionRow ? String(productionRow.H || "") : "",
-          actualQuantity: Number(row.K || 0),
-        }
-      })
-      setPendingProductions(pending)
+     // First, define pendingFiltered by filtering jobCardDataRows
+const pendingFiltered = jobCardDataRows.filter(
+  (row) => row.P !== null && String(row.P).trim() !== "" && (!row.Q || String(row.Q).trim() === ""),
+)
+
+const pending = pendingFiltered.map((row) => {
+  const productionRow = productionSheetRows.find(
+    (prodRow) => String(prodRow.B || "").trim() === String(row.E || "").trim(),
+  )
+  return {
+    _rowIndex: row._rowIndex,
+    jobCardNo: String(row.B || ""),
+    firmName: String(row.C || ""),
+    supervisorName: String(row.D || ""),
+    deliveryOrderNo: String(row.E || ""),
+    partyName: String(row.F || ""),
+    productName: String(row.G || ""),
+    orderQuantity: Number(row.H || 0),
+    dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
+    shift: String(row.J || ""),
+    notes: String(row.O || ""),
+    quantity: Number(row.H || 0),
+    expectedDeliveryDate:
+      productionRow && productionRow.G ? (parseGvizDate(productionRow.G) ? format(parseGvizDate(productionRow.G)!, "dd/MM/yyyy") : "") : "",
+    priority: productionRow ? String(productionRow.H || "") : "",
+    actualQuantity: Number(row.K || 0),
+  }
+})
+setPendingProductions(pending)
+
 
       const historyFiltered = jobCardDataRows.filter((row) => row.Q !== null && String(row.Q).trim() !== "")
       const history = historyFiltered.map((row) => {
-        const jobCardNo = String(row.B || "").trim()
-        
-        const productionRow = productionSheetRows.find(
-          (prodRow) => String(prodRow.B || "").trim() === String(row.E || "").trim(),
-        )
-        const actualQuantityFromProdSheet = productionRow ? Number(productionRow.F || 0) : 0
-        
-        const productionData = actualProductionRecords.find(p => p.jobCardNo === jobCardNo);
+  const jobCardNo = String(row.B || "").trim()
+  const deliveryOrderNo = String(row.E || "").trim()
+  
+  // Find matching production record from Actual Production sheet
+  const productionRecord = productionRecordsMap.get(jobCardNo)
+  
+  // Find in production sheet for additional data
+  const productionRow = productionSheetRows.find(
+    (prodRow) => String(prodRow.B || "").trim() === deliveryOrderNo,
+  )
+  
+  const actualQuantityFromProdSheet = productionRecord ? 
+    Number(productionRecord.quantityFG || 0) : 
+    (productionRow ? Number(productionRow.F || 0) : 0)
 
-        return {
-          _rowIndex: row._rowIndex,
-          jobCardNo: jobCardNo,
-          deliveryOrderNo: String(row.E || ""),
-          actualQuantity: actualQuantityFromProdSheet,
-          expectedDeliveryDate:
-            productionRow && productionRow.G ? format(parseGvizDate(productionRow.G), "dd/MM/yyyy") : "",
-          priority: productionRow ? String(productionRow.H || "") : "",
-          dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
-          supervisorName: String(row.D || ""),
-          shift: String(row.J || ""),
-          rawMaterials: productionData ? productionData.rawMaterials : [],
-          machineHours: productionData ? productionData.machineHours : "-",
-          notes: String(row.O || ""),
-          firmName: String(row.C || ""),
-          partyName: String(row.F || ""),
-          productName: String(row.G || ""),
-          orderQuantity: Number(row.H || 0),
-          quantity: Number(row.H || 0),
-        }
-      })
+  return {
+    _rowIndex: row._rowIndex,
+    jobCardNo: jobCardNo,
+    deliveryOrderNo: deliveryOrderNo,
+    actualQuantity: actualQuantityFromProdSheet,
+    expectedDeliveryDate:
+      productionRow && productionRow.G ? format(parseGvizDate(productionRow.G), "dd/MM/yyyy") : "",
+    priority: productionRow ? String(productionRow.H || "") : "",
+   dateOfProduction: productionRecord ? 
+  (productionRecord.dateOfProduction ? 
+    format(parseGvizDate(productionRecord.dateOfProduction) || new Date(), "dd/MM/yyyy") : "") : 
+  (row.I ? format(parseGvizDate(row.I) || new Date(), "dd/MM/yyyy") : ""),
+  
+    supervisorName: productionRecord ? 
+      productionRecord.supervisorName : 
+      String(row.D || ""),
+    shift: String(row.J || ""),
+    
+    // Use data from Actual Production sheet
+    rawMaterials: productionRecord ? productionRecord.rawMaterials : [],
+    machineHours: productionRecord ? productionRecord.machineHours : "-",
+    remarks: productionRecord ? productionRecord.remarks : "", // NEW: Add remarks
+    
+    // Additional fields from Actual Production
+    productionTimestamp: productionRecord ? productionRecord.timestamp : "",
+    firmName: productionRecord ? productionRecord.firmName : String(row.C || ""),
+    partyName: String(row.F || ""),
+    productName: productionRecord ? productionRecord.productName : String(row.G || ""),
+    orderQuantity: Number(row.H || 0),
+    quantity: Number(row.H || 0),
+    serialNumber: productionRecord ? productionRecord.serialNumber : "",
+    quantityFG: productionRecord ? productionRecord.quantityFG : "",
+  }
+})
+
+
       setHistoryProductions(history.sort((a, b) => b._rowIndex - a._rowIndex))
 
       const materials = [...new Set(masterDataRows.map((row) => String(row.J || "")).filter(Boolean))]
@@ -363,86 +423,90 @@ export default function ProductionPage() {
     if (!formData.quantityFG || Number(formData.quantityFG) <= 0)
       errors.quantityFG = "Valid Finished Goods quantity is required."
     if (formData.rawMaterials.length === 0) errors.rawMaterials = "At least one raw material is required."
-    const timeRegex = /^(?:2[0-3]|[01]?[0-9]):[0-5]?[0-9]:[0-5]?[0-9]$/
-    if (!formData.machineRunningHour || !timeRegex.test(formData.machineRunningHour)) {
-      errors.machineRunningHour = "Machine running hour must be in HH:MM:SS format."
-    }
+    // const timeRegex = /^(?:2[0-3]|[01]?[0-9]):[0-5]?[0-9]:[0-5]?[0-9]$/
+    // if (!formData.machineRunningHour || !timeRegex.test(formData.machineRunningHour)) {
+    //   errors.machineRunningHour = "Machine running hour must be in HH:MM:SS format."
+    // }
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validateForm()) return
+ const handleSubmit = async (e) => {
+  e.preventDefault()
+  if (!validateForm()) return
 
-    if (!selectedJobCard || !selectedJobCard.jobCardNo) {
-      alert("Error: Missing job card details. Please refresh.")
-      return
-    }
-
-    setIsSubmitting(true)
-    try {
-      const prodData = await fetchProductionData()
-      let lastSerialNumber = 0
-      if (prodData && prodData.rows.length > 0) {
-        const lastRow = prodData.rows[prodData.rows.length - 1]
-        const lastSerialCell = lastRow.c[7]
-        if (lastSerialCell && typeof lastSerialCell.v === "number") {
-          lastSerialNumber = lastSerialCell.v
-        }
-      }
-
-      const newSerialNumber = lastSerialNumber + 1
-      const timestamp = format(new Date(), "dd/MM/yyyy HH:mm:ss")
-
-      const rawMaterialsData = []
-      for (let i = 0; i < 20; i++) {
-        if (formData.rawMaterials[i]) {
-          rawMaterialsData.push(formData.rawMaterials[i].name)
-          rawMaterialsData.push(formData.rawMaterials[i].quantity)
-        } else {
-          rawMaterialsData.push("")
-          rawMaterialsData.push("")
-        }
-      }
-
-      const productionRowData = [
-        timestamp,
-        selectedJobCard.jobCardNo,
-        selectedJobCard.firmName,
-        selectedJobCard.dateOfProduction,
-        selectedJobCard.supervisorName,
-        selectedJobCard.productName,
-        formData.quantityFG,
-        newSerialNumber,
-        ...rawMaterialsData,
-        formData.machineRunningHour,
-      ]
-
-      const addBody = new URLSearchParams({
-        action: "insert",
-        sheetName: PRODUCTION_DATA_SHEET,
-        rowData: JSON.stringify(productionRowData),
-      })
-
-      const addRes = await fetch(WEB_APP_URL, { method: "POST", body: addBody })
-      const addResult = await addRes.json()
-
-      if (!addResult.success) {
-        throw new Error(addResult.error || "Failed to save production data.")
-      }
-
-      alert("Production data saved successfully!")
-      setIsDialogOpen(false)
-      await loadAllData()
-    } catch (err) {
-      setError(err.message)
-      alert(`Error: ${err.message}`)
-    } finally {
-      setIsSubmitting(false)
-    }
+  if (!selectedJobCard || !selectedJobCard.jobCardNo) {
+    alert("Error: Missing job card details. Please refresh.")
+    return
   }
 
+  setIsSubmitting(true)
+  try {
+    const prodData = await fetchProductionData()
+    let lastSerialNumber = 0
+    if (prodData && prodData.rows.length > 0) {
+      const lastRow = prodData.rows[prodData.rows.length - 1]
+      const lastSerialCell = lastRow.c[7]
+      if (lastSerialCell && typeof lastSerialCell.v === "number") {
+        lastSerialNumber = lastSerialCell.v
+      }
+    }
+
+    const newSerialNumber = lastSerialNumber + 1
+    const timestamp = format(new Date(), "dd/MM/yyyy HH:mm:ss")
+
+    const rawMaterialsData = []
+    for (let i = 0; i < 20; i++) {
+      if (formData.rawMaterials[i]) {
+        rawMaterialsData.push(formData.rawMaterials[i].name)
+        rawMaterialsData.push(formData.rawMaterials[i].quantity)
+      } else {
+        rawMaterialsData.push("")
+        rawMaterialsData.push("")
+      }
+    }
+
+    // Updated row data structure:
+    // Columns A-H are fixed, then 40 columns for raw materials (20 pairs), then machine hour, then remarks
+    const productionRowData = [
+      timestamp,                    // Column A: Timestamp
+      selectedJobCard.jobCardNo,    // Column B: Job Card No
+      selectedJobCard.firmName,     // Column C: Firm Name
+      selectedJobCard.dateOfProduction, // Column D: Date of Production
+      selectedJobCard.supervisorName,   // Column E: Supervisor Name
+      selectedJobCard.productName,      // Column F: Product Name
+      formData.quantityFG,              // Column G: Quantity FG
+      newSerialNumber,                   // Column H: Serial Number
+      ...rawMaterialsData,               // Columns I to AW (40 columns for 20 raw materials)
+      formData.machineRunningHour || "", // Column AX: Machine Running Hour
+      formData.remarks || "",            // Column AY: Remarks (BO in your sheet)
+    ]
+
+    console.log("Sending production data:", productionRowData)
+
+    const addBody = new URLSearchParams({
+      action: "insert",
+      sheetName: PRODUCTION_DATA_SHEET,
+      rowData: JSON.stringify(productionRowData),
+    })
+
+    const addRes = await fetch(WEB_APP_URL, { method: "POST", body: addBody })
+    const addResult = await addRes.json()
+
+    if (!addResult.success) {
+      throw new Error(addResult.error || "Failed to save production data.")
+    }
+
+    alert("Production data saved successfully!")
+    setIsDialogOpen(false)
+    await loadAllData()
+  } catch (err) {
+    setError(err.message)
+    alert(`Error: ${err.message}`)
+  } finally {
+    setIsSubmitting(false)
+  }
+}
   const ColumnToggler = ({ tab, columnsMeta }) => (
     <Popover>
       <PopoverTrigger asChild>
@@ -741,106 +805,124 @@ export default function ProductionPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="quantityFG">Quantity Of FG *</Label>
-                <Input
-                  id="quantityFG"
-                  type="number"
-                  value={formData.quantityFG}
-                  onChange={(e) => setFormData({ ...formData, quantityFG: e.target.value })}
-                  className={formErrors.quantityFG ? "border-red-500" : ""}
-                />
-                {formErrors.quantityFG && <p className="text-xs text-red-600 mt-1">{formErrors.quantityFG}</p>}
-              </div>
-              <div>
-                <Label htmlFor="machineRunningHour">Machine Running Hour (HH:MM:SS) *</Label>
-                <Input
-                  id="machineRunningHour"
-                  type="text"
-                  placeholder="e.g., 08:30:00"
-                  value={formData.machineRunningHour}
-                  onChange={(e) => setFormData({ ...formData, machineRunningHour: e.target.value })}
-                  className={formErrors.machineRunningHour ? "border-red-500" : ""}
-                />
-                {formErrors.machineRunningHour && (
-                  <p className="text-xs text-red-600 mt-1">{formErrors.machineRunningHour}</p>
-                )}
-              </div>
-            </div>
+           {/* Form Fields */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div>
+    <Label htmlFor="quantityFG">Quantity Of FG *</Label>
+    <Input
+      id="quantityFG"
+      type="number"
+      value={formData.quantityFG}
+      onChange={(e) => setFormData({ ...formData, quantityFG: e.target.value })}
+      className={formErrors.quantityFG ? "border-red-500" : ""}
+    />
+    {formErrors.quantityFG && <p className="text-xs text-red-600 mt-1">{formErrors.quantityFG}</p>}
+  </div>
+  <div>
+    <Label htmlFor="machineRunningHour">Machine Running Hour</Label>
+    <Input
+      id="machineRunningHour"
+      type="text"
+      placeholder="Enter machine hours (e.g., 8.5, 10, etc.)"
+      value={formData.machineRunningHour}
+      onChange={(e) => setFormData({ ...formData, machineRunningHour: e.target.value })}
+      className={formErrors.machineRunningHour ? "border-red-500" : ""}
+    />
+    {formErrors.machineRunningHour && (
+      <p className="text-xs text-red-600 mt-1">{formErrors.machineRunningHour}</p>
+    )}
+  </div>
+</div>
 
-            <div className="space-y-4">
-              <Label className="font-medium">
-                Raw Materials Used *{" "}
-                <span className="text-sm text-muted-foreground">({formData.rawMaterials.length} of 20)</span>
-              </Label>
-              <div className="flex items-end gap-2">
-                <div className="flex-1 space-y-1">
-                  <Label htmlFor="mat-name" className="text-xs">
-                    Material Name
-                  </Label>
-                  <Select
-                    value={newMaterial.name}
-                    onValueChange={(value) => setNewMaterial({ ...newMaterial, name: value })}
-                  >
-                    <SelectTrigger id="mat-name">
-                      <SelectValue placeholder="Select a material..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {materialsList.map((material) => (
-                        <SelectItem key={material} value={material}>
-                          {material}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="w-32 space-y-1">
-                  <Label htmlFor="mat-qty" className="text-xs">
-                    Quantity
-                  </Label>
-                  <Input
-                    id="mat-qty"
-                    type="number"
-                    placeholder="e.g., 500"
-                    value={newMaterial.quantity}
-                    onChange={(e) => setNewMaterial({ ...newMaterial, quantity: e.target.value })}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  onClick={handleAddMaterial}
-                  disabled={!newMaterial.name || !newMaterial.quantity || formData.rawMaterials.length >= 20}
-                  className="bg-purple-600 text-white hover:bg-purple-700"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-              {formErrors.rawMaterials && <p className="text-xs text-red-600 mt-1">{formErrors.rawMaterials}</p>}
-              {formData.rawMaterials.length > 0 && (
-                <div className="border rounded-md p-2 space-y-2 max-h-40 overflow-y-auto">
-                  {formData.rawMaterials.map((material, index) => (
-                    <div key={index} className="flex items-center justify-between bg-muted p-2 rounded-md text-sm">
-                      <span>
-                        {index + 1}. {material.name}
-                      </span>
-                      <div className="flex items-center gap-4">
-                        <span>{material.quantity}</span>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          onClick={() => handleRemoveMaterial(index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+{/* New Remarks Field - Full Width */}
+<div className="grid grid-cols-1 gap-4 mt-4">
+  <div>
+    <Label htmlFor="remarks" className="flex items-center gap-2">
+      <span>Remarks</span>
+      <span className="text-xs text-gray-500">(Optional)</span>
+    </Label>
+    <Input
+      id="remarks"
+      type="text"
+      placeholder="Enter any remarks or notes about this production"
+      value={formData.remarks}
+      onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+    />
+  </div>
+</div>
+            {/* Raw Materials Section (unchanged but keeping for context) */}
+<div className="space-y-4 mt-4">
+  <Label className="font-medium">
+    Raw Materials Used *{" "}
+    <span className="text-sm text-muted-foreground">({formData.rawMaterials.length} of 20)</span>
+  </Label>
+  <div className="flex items-end gap-2">
+    <div className="flex-1 space-y-1">
+      <Label htmlFor="mat-name" className="text-xs">
+        Material Name
+      </Label>
+      <Select
+        value={newMaterial.name}
+        onValueChange={(value) => setNewMaterial({ ...newMaterial, name: value })}
+      >
+        <SelectTrigger id="mat-name">
+          <SelectValue placeholder="Select a material..." />
+        </SelectTrigger>
+        <SelectContent>
+          {materialsList.map((material) => (
+            <SelectItem key={material} value={material}>
+              {material}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+    <div className="w-32 space-y-1">
+      <Label htmlFor="mat-qty" className="text-xs">
+        Quantity
+      </Label>
+      <Input
+        id="mat-qty"
+        type="number"
+        placeholder="e.g., 500"
+        value={newMaterial.quantity}
+        onChange={(e) => setNewMaterial({ ...newMaterial, quantity: e.target.value })}
+      />
+    </div>
+    <Button
+      type="button"
+      onClick={handleAddMaterial}
+      disabled={!newMaterial.name || !newMaterial.quantity || formData.rawMaterials.length >= 20}
+      className="bg-purple-600 text-white hover:bg-purple-700"
+    >
+      <Plus className="h-4 w-4 mr-1" />
+      Add
+    </Button>
+  </div>
+  {formErrors.rawMaterials && <p className="text-xs text-red-600 mt-1">{formErrors.rawMaterials}</p>}
+  {formData.rawMaterials.length > 0 && (
+    <div className="border rounded-md p-2 space-y-2 max-h-40 overflow-y-auto">
+      {formData.rawMaterials.map((material, index) => (
+        <div key={index} className="flex items-center justify-between bg-muted p-2 rounded-md text-sm">
+          <span>
+            {index + 1}. {material.name}
+          </span>
+          <div className="flex items-center gap-4">
+            <span>{material.quantity}</span>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={() => handleRemoveMaterial(index)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
