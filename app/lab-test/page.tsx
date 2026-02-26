@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, CalendarIcon, TestTube2, History, Settings } from "lucide-react"
+import { Loader2, AlertTriangle, TestTube2, History, Settings } from "lucide-react"
 import { format } from "date-fns"
 import { useGoogleSheet, parseGvizDate } from "@/lib/g-sheets"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -11,12 +11,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { cn } from "@/lib/utils"
 
 // Configuration
 const WEB_APP_URL =
@@ -26,38 +23,30 @@ const MASTER_SHEET = "Master"
 
 // Column mappings for Costing Response sheet
 const COSTING_RESPONSE_COLUMNS = {
-  timestamp: 1,           // Column A: TIMESTAMP
-  compositionNo: 2,       // Column B: Composition No.
-  orderNo: 3,             // Column C: Order No.
-  productName: 4,         // Column D: product name
-  variableCost: 5,        // Column E: VARIABLE COST
-  manufacturingCost: 6,   // Column F: Manufacturing Cost
-  interestDays: 7,        // Column G: Interest (days)
-  interestCost: 8,        // Column H: Interest Cost
-  transportingFor: 9,     // Column I: Transporting (FOR)
-  sellingPrice: 10,       // Column J: SELLING PRICE
-  gpPercentage: 11,       // Column K: GP %AGE
-  alumina: 12,            // Column L: alumina
-  iron: 13,               // Column M: iron
-  bd: 14,                 // Column N: BD
-  ap: 15,                 // Column O: AP
-  planned1: 56,           // Column BD: Planned 1
-  actual2: 57,            // Column BE: Actual 2
-  timeDelay1: 58,         // Column BF: Time Delay 1
-  wc: 59,                 // Column BG: W/C
-  ist: 60,                // Column BH: IST
-  fst: 61,                // Column BI: FST
-  ccsAt110: 62,           // Column BJ: CCS at 110
-  ccsAt1100: 63,          // Column BK: CCS at 1100
-  plc: 64,                // Column BL: PLC
-  bdValue: 65,            // Column BM: BD
-  apValue: 66,            // Column BN: AP
-  testedBy: 67,           // Column BO: Tested By
-  dateOfTest: 68,
-  remarks: 69,            // Column BP: Remarks
+  timestamp: 1,
+  compositionNo: 2,
+  orderNo: 3,
+  productName: 4,
+  variableCost: 5,
+  manufacturingCost: 6,
+  interestDays: 7,
+  interestCost: 8,
+  transportingFor: 9,
+  sellingPrice: 10,
+  gpPercentage: 11,
+  alumina: 12,
+  iron: 13,
+  bd: 14,
+  ap: 15,
+  planned1: 56,
+  actual2: 57,
+  timeDelay1: 58,
+  wc: 59,
+  ist: 60,
+  fst: 61,
+  remarks: 69,
 }
 
-// Type Definitions
 interface CostingItem {
   _rowIndex: number
   compositionNo: string
@@ -80,45 +69,19 @@ interface CostingItem {
   wc: string
   ist: string
   fst: string
-  ccsAt110: string
-  ccsAt1100: string
-  plc: string
-  bdValue: string
-  apValue: string
-  testedBy: string
-  dateOfTest: string
+  status: string
   remarks: string
 }
 
-interface HistoryItem extends CostingItem { }
+interface HistoryItem extends CostingItem {}
 
-// Format date from Google Sheets format
-const formatDisplayDate = (dateValue: any): string => {
-  if (!dateValue) return "-"
-
-  // If it's already a formatted date string, return it
-  if (typeof dateValue === 'string' && dateValue.includes('/')) {
-    return dateValue
-  }
-
-  try {
-    const date = parseGvizDate(dateValue)
-    if (date && !isNaN(date.getTime())) {
-      return format(date, "dd/MM/yyyy HH:mm")
-    }
-  } catch (e) {
-    // If parsing fails, return the original value
-  }
-
-  return String(dateValue)
-}
-
-// Column Definitions for Pending Tests - ONLY the columns you want
+// Column Definitions for Pending Tests
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Planned Date", dataKey: "planned1", toggleable: true }, // 👈 ADD THIS
   { header: "VARIABLE COST", dataKey: "variableCost", toggleable: true },
   { header: "Manufacturing Cost", dataKey: "manufacturingCost", toggleable: true },
   { header: "Interest (days)", dataKey: "interestDays", toggleable: true },
@@ -127,40 +90,24 @@ const PENDING_COLUMNS_META = [
   { header: "SELLING PRICE", dataKey: "sellingPrice", toggleable: true },
 ]
 
-// Column Definitions for History - Keep as is
+// Column Definitions for History
 const HISTORY_COLUMNS_META = [
+  { header: "Timestamp", dataKey: "actual2", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
-  // { header: "Actual 2", dataKey: "actual2", toggleable: true },
-  // { header: "Time Delay 1", dataKey: "timeDelay1", toggleable: true },
-  { header: "W/C", dataKey: "wc", toggleable: true },
-  { header: "IST", dataKey: "ist", toggleable: true },
-  { header: "FST", dataKey: "fst", toggleable: true },
-  { header: "CCS at 110", dataKey: "ccsAt110", toggleable: true },
-  { header: "CCS at 1100", dataKey: "ccsAt1100", toggleable: true },
-  { header: "PLC", dataKey: "plc", toggleable: true },
-  { header: "BD", dataKey: "bdValue", toggleable: true },
-  { header: "AP", dataKey: "apValue", toggleable: true },
-  { header: "Planned 1", dataKey: "planned1", toggleable: true },
+  { header: "Alumina Percentage %", dataKey: "wc", toggleable: true },
+  { header: "Iron Percentage %", dataKey: "ist", toggleable: true },
+  // { header: "FST", dataKey: "fst", toggleable: true },
   { header: "Remarks", dataKey: "remarks", toggleable: true },
-
-  // { header: "Tested By", dataKey: "testedBy", toggleable: true },
-  // { header: "Date Of Test", dataKey: "dateOfTest", toggleable: true },
 ]
 
 const initialFormState = {
   wc: "",
   ist: "",
-  fst: "",
-  ccsAt110: "",
-  ccsAt1100: "",
-  plc: "",
-  bdValue: "",
-  apValue: "",
+  status: "",
   remarks: "",
 }
-
 
 export default function LabTestingPage() {
   const [pendingTests, setPendingTests] = useState<CostingItem[]>([])
@@ -179,41 +126,55 @@ export default function LabTestingPage() {
 
   const { fetchData: fetchCostingData } = useGoogleSheet(COSTING_RESPONSE_SHEET)
   const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET)
+const formatDateValue = (value: any) => {
+  if (!value) return ""
 
-  const processGvizTable = (table) => {
-    if (!table || !table.rows || table.rows.length === 0) {
-      return []
+  try {
+    // If Google GViz Date format
+    if (typeof value === "string" && value.startsWith("Date(")) {
+      const parsed = parseGvizDate(value)
+      if (parsed) return format(parsed, "dd/MM/yy")
     }
 
+    // Normal Date object
+    if (value instanceof Date) {
+      return format(value, "dd/MM/yy")
+    }
+
+    // ISO string
+    return format(new Date(value), "dd/MM/yy")
+  } catch {
+    return ""
+  }
+}
+  const processGvizTable = (table: any) => {
+    if (!table?.rows?.length) return []
+
     const firstDataRowIndex = table.rows.findIndex(
-      (r) => r && r.c && r.c.some((cell) => cell && cell.v !== null && cell.v !== ""),
+      (r: any) => r?.c?.some((cell: any) => cell?.v !== null && cell?.v !== "")
     )
     if (firstDataRowIndex === -1) return []
 
-    const colIds = table.cols.map((col) => col.id)
     const dataRows = table.rows.slice(firstDataRowIndex)
 
     return dataRows
-      .map((row, rowIndex) => {
-        if (!row || !row.c || row.c.every((cell) => !cell || cell.v === null || cell.v === "")) {
-          return null
-        }
+      .map((row: any, rowIndex: number) => {
+        if (!row?.c || row.c.every((cell: any) => !cell?.v)) return null
+
         const rowData: any = {
-          _rowIndex: firstDataRowIndex + rowIndex + 2 // +2 because sheets are 1-based and we skip header
+          _rowIndex: firstDataRowIndex + rowIndex + 2
         }
 
-        // Map each column by index
         const columnLetters = [
           'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
           'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL',
           'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV', 'AW', 'AX', 'AY', 'AZ', 'BA', 'BB', 'BC',
-          'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BK', 'BL', 'BM', 'BN', 'BO', 'BP','BQ'
+          'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BK', 'BL', 'BM', 'BN', 'BO', 'BP', 'BQ'
         ]
 
-        row.c.forEach((cell, cellIndex) => {
+        row.c.forEach((cell: any, cellIndex: number) => {
           if (cellIndex < columnLetters.length) {
-            const colLetter = columnLetters[cellIndex]
-            rowData[colLetter] = cell ? cell.v : null
+            rowData[columnLetters[cellIndex]] = cell?.v ?? null
           }
         })
 
@@ -223,15 +184,10 @@ export default function LabTestingPage() {
   }
 
   useEffect(() => {
-    const initializeVisibility = (columnsMeta) => {
-      const visibility = {}
-      // Set all toggleable columns to visible by default
+    const initializeVisibility = (columnsMeta: any[]) => {
+      const visibility: Record<string, boolean> = {}
       columnsMeta.forEach((col) => {
-        if (col.toggleable) {
-          visibility[col.dataKey] = true
-        } else if (col.alwaysVisible) {
-          visibility[col.dataKey] = true
-        }
+        visibility[col.dataKey] = true
       })
       return visibility
     }
@@ -250,98 +206,68 @@ export default function LabTestingPage() {
         fetchMasterData(),
       ])
 
-      console.log("Costing table received:", costingTable)
-
       const costingRows = processGvizTable(costingTable)
-      console.log("Processed costing rows:", costingRows.length)
-
       const masterRows = processGvizTable(masterTable)
 
-      // Process costing data into items
-      const allItems: CostingItem[] = costingRows.map((row) => {
-        const item = {
-          _rowIndex: row._rowIndex,
-          compositionNo: String(row.B || ""),
-          orderNo: String(row.C || ""),
-          productName: String(row.D || ""),
-          variableCost: String(row.E || ""),
-          manufacturingCost: String(row.F || ""),
-          interestDays: String(row.G || ""),
-          interestCost: String(row.H || ""),
-          transportingFor: String(row.I || ""),
-          sellingPrice: String(row.J || ""),
-          gpPercentage: String(row.K || ""),
-          alumina: String(row.L || ""),
-          iron: String(row.M || ""),
-          bd: String(row.N || ""),
-          ap: String(row.O || ""),
-          planned1: String(row.BD || ""),
-          actual2: String(row.BE || ""),
-          timeDelay1: String(row.BF || ""),
-          wc: String(row.BG || ""),
-          ist: String(row.BH || ""),
-          fst: String(row.BI || ""),
-          ccsAt110: String(row.BJ || ""),
-          ccsAt1100: String(row.BK || ""),
-          plc: String(row.BL || ""),
-          bdValue: String(row.BM || ""),
-          apValue: String(row.BN || ""),
-          testedBy: String(row.BO || ""),
-          dateOfTest: String(row.BP || ""),
-          remarks: String(row.BQ || ""),      // NEW: Map remarks column
+      const allItems: CostingItem[] = costingRows.map((row: any) => ({
+        _rowIndex: row._rowIndex,
+        compositionNo: String(row.B || ""),
+        orderNo: String(row.C || ""),
+        productName: String(row.D || ""),
+        variableCost: String(row.E || ""),
+        manufacturingCost: String(row.F || ""),
+        interestDays: String(row.G || ""),
+        interestCost: String(row.H || ""),
+        transportingFor: String(row.I || ""),
+        sellingPrice: String(row.J || ""),
+        gpPercentage: String(row.K || ""),
+        alumina: String(row.L || ""),
+        iron: String(row.M || ""),
+        bd: String(row.N || ""),
+        ap: String(row.O || ""),
+        planned1: formatDateValue(row.BD),
+        actual2: formatDateValue(row.BE),
+        timeDelay1: String(row.BF || ""),
+        wc: String(row.BG || ""),
+        ist: String(row.BH || ""),
+      status: String(row.BI || ""),
+        remarks: String(row.BQ || ""),
+      }))
 
-        }
-        return item
-      })
-
-      console.log("All items mapped:", allItems.length)
-
-      // Filter pending: Planned 1 is not null/empty AND Actual 2 is null/empty
       const pending = allItems.filter((item) => {
-        const hasPlanned1 = item.planned1 &&
-          item.planned1.trim() !== "" &&
-          item.planned1 !== "null" &&
+        const hasPlanned1 = item.planned1?.trim() && 
+          item.planned1 !== "null" && 
           item.planned1 !== "undefined"
-        const hasActual2 = item.actual2 &&
-          item.actual2.trim() !== "" &&
-          item.actual2 !== "null" &&
+        const hasActual2 = item.actual2?.trim() && 
+          item.actual2 !== "null" && 
           item.actual2 !== "undefined"
         return hasPlanned1 && !hasActual2
       })
 
-      console.log("Pending tests:", pending.length)
-
-      // Filter history: Both Planned 1 and Actual 2 are not null/empty
       const history = allItems
         .filter((item) => {
-          const hasPlanned1 = item.planned1 &&
-            item.planned1.trim() !== "" &&
-            item.planned1 !== "null" &&
+          const hasPlanned1 = item.planned1?.trim() && 
+            item.planned1 !== "null" && 
             item.planned1 !== "undefined"
-          const hasActual2 = item.actual2 &&
-            item.actual2.trim() !== "" &&
-            item.actual2 !== "null" &&
+          const hasActual2 = item.actual2?.trim() && 
+            item.actual2 !== "null" && 
             item.actual2 !== "undefined"
           return hasPlanned1 && hasActual2
         })
         .sort((a, b) => {
-          // Sort by dateOfTest if available
-          if (a.dateOfTest && b.dateOfTest) {
-            return new Date(b.dateOfTest).getTime() - new Date(a.dateOfTest).getTime()
+          if (a.actual2 && b.actual2) {
+            return new Date(b.actual2).getTime() - new Date(a.actual2).getTime()
           }
           return 0
         })
 
-      console.log("History tests:", history.length)
-
       setPendingTests(pending)
       setHistoryTests(history)
 
-      // Set tested by options from master sheet
-      const testedByOpts = [...new Set(masterRows.map((row) => String(row.E || "")).filter(Boolean))]
+      const testedByOpts = [...new Set(masterRows.map((row: any) => String(row.E || "").trim()).filter(Boolean))]
       setTestedByOptions(testedByOpts.length > 0 ? testedByOpts : ["Dr. Arjun Patel", "Dr. Kavita Sharma", "Dr. Rajesh Gupta"])
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error in loadAllData:", err)
       setError(`Failed to load data: ${err.message}`)
     } finally {
@@ -355,65 +281,38 @@ export default function LabTestingPage() {
 
   const handleFormChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-
-    // Clear error for this field if it exists
     if (formErrors[field]) {
       setFormErrors((prev) => ({ ...prev, [field]: null }))
     }
   }
 
-  const validateForm = () => {
-    return true
-  }
+  const validateForm = () => true
 
   const handleOpenLabTesting = (test: CostingItem) => {
-    console.log("Opening test:", test)
     setSelectedTest(test)
-    // Pre-fill form with existing values from the row
     setFormData({
       wc: test.wc || "",
       ist: test.ist || "",
-      fst: test.fst || "",
-      ccsAt110: test.ccsAt110 || "",
-      ccsAt1100: test.ccsAt1100 || "",
-      plc: test.plc || "",
-      bdValue: test.bdValue || "",
-      apValue: test.apValue || "",
-      remarks: test.remarks || "",  // NEW
-
+  status: test.status || "",
+      remarks: test.remarks || "",
     })
-    setIsDialogOpen(true)   // ✅ ADD THIS
-
+    setIsDialogOpen(true)
   }
+
   const handleSaveLabTest = async () => {
     if (!validateForm() || !selectedTest) return
 
     setIsSubmitting(true)
     try {
-      const timestamp = format(new Date(), "dd/MM/yyyy HH:mm:ss")
-      const actual2Value = format(new Date(), "dd/MM/yyyy HH:mm")
-
-      // Prepare column updates with 'col' prefix as expected by Apps Script
+const actual2Value = format(new Date(), "dd/MM/yy")
       const columnUpdates: Record<string, string> = {
-        // Update Actual 2 (Column BE - index 57)
         "col57": actual2Value,
-
-        // Update test results
-
       }
 
-      // Update the test input fields if they have values
-      if (formData.wc) columnUpdates["col59"] = formData.wc // wc - column BG
-      if (formData.ist) columnUpdates["col60"] = formData.ist // ist - column BH
-      if (formData.fst) columnUpdates["col61"] = formData.fst // fst - column BI
-      if (formData.ccsAt110) columnUpdates["col62"] = formData.ccsAt110 // ccsAt110 - column BJ
-      if (formData.ccsAt1100) columnUpdates["col63"] = formData.ccsAt1100 // ccsAt1100 - column BK
-      if (formData.plc) columnUpdates["col64"] = formData.plc // plc - column BL
-      if (formData.bdValue) columnUpdates["col65"] = formData.bdValue // bdValue - column BM
-      if (formData.apValue) columnUpdates["col66"] = formData.apValue // apValue - column BN
-     if (formData.remarks) columnUpdates["col69"] = formData.remarks // remarks - column BQ (NEW)
-
-      console.log("Updating row:", selectedTest._rowIndex, "with updates:", columnUpdates)
+      if (formData.wc) columnUpdates["col59"] = formData.wc
+      if (formData.ist) columnUpdates["col60"] = formData.ist
+if (formData.status) columnUpdates["col61"] = formData.status      
+if (formData.remarks) columnUpdates["col69"] = formData.remarks
 
       const body = new URLSearchParams({
         sheetName: COSTING_RESPONSE_SHEET,
@@ -439,7 +338,7 @@ export default function LabTestingPage() {
       alert("Lab test data saved successfully!")
       setIsDialogOpen(false)
       await loadAllData()
-    } catch (err) {
+    } catch (err: any) {
       console.error("Save error:", err)
       setError(err.message)
       alert(`Error: ${err.message}`)
@@ -578,9 +477,9 @@ export default function LabTestingPage() {
 
             <TabsContent value="pending">
               <Card className="shadow-sm border border-border">
-                <CardHeader className="py-3 px-4 bg-purple-50 rounded-md p-2">
+                <CardHeader className="py-3 px-4 bg-purple-50 rounded-md">
                   <div className="flex justify-between items-center">
-                    <CardTitle className="text-md font-semibold text-foreground">
+                    <CardTitle className="text-md font-semibold text-foreground flex items-center">
                       <TestTube2 className="h-5 w-5 text-primary mr-2" />
                       Pending Items ({pendingTests.length})
                     </CardTitle>
@@ -643,9 +542,9 @@ export default function LabTestingPage() {
 
             <TabsContent value="history">
               <Card className="shadow-sm border border-border">
-                <CardHeader className="py-3 px-4 bg-purple-50 rounded-md p-2">
+                <CardHeader className="py-3 px-4 bg-purple-50 rounded-md">
                   <div className="flex justify-between items-center">
-                    <CardTitle className="text-md font-semibold text-foreground">
+                    <CardTitle className="text-md font-semibold text-foreground flex items-center">
                       <History className="h-5 w-5 text-primary mr-2" />
                       History Items ({historyTests.length})
                     </CardTitle>
@@ -670,11 +569,7 @@ export default function LabTestingPage() {
                             <TableRow key={`${test._rowIndex}-${index}`} className="hover:bg-purple-50/50">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">
-                                  {col.dataKey === "planned1" || col.dataKey === "actual2" || col.dataKey === "dateOfTest" ? (
-                                    formatDisplayDate(test[col.dataKey as keyof HistoryItem])
-                                  ) : (
-                                    test[col.dataKey as keyof HistoryItem] || "-"
-                                  )}
+                                  {test[col.dataKey as keyof HistoryItem] || "-"}
                                 </TableCell>
                               ))}
                             </TableRow>
@@ -707,7 +602,7 @@ export default function LabTestingPage() {
           <DialogHeader>
             <DialogTitle>Lab Test Details</DialogTitle>
             <DialogDescription>
-              Fill out the test results below. Fields with * are required.
+              Fill out the test results below.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -732,34 +627,49 @@ export default function LabTestingPage() {
               </div>
               <div>
                 <Label className="text-xs">Planned 1</Label>
-                <p className="text-sm font-semibold">{formatDisplayDate(selectedTest?.planned1)}</p>
+                <p className="text-sm font-semibold">{selectedTest?.planned1 || "-"}</p>
               </div>
             </div>
 
-            
-            {/* Form Fields - Reorganized with CCS at 110 in second row */}
-<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-  {/* First Row */}
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+  {/* WC */}
   <div className="space-y-2">
-    <Label htmlFor="wc">W/C</Label>
+    <Label htmlFor="wc">Alumina Percentage %</Label>
     <Input
       id="wc"
       value={formData.wc}
       onChange={(e) => handleFormChange("wc", e.target.value)}
-      placeholder="Enter W/C"
+      placeholder="Enter Alumina %"
     />
   </div>
 
+  {/* IST */}
   <div className="space-y-2">
-    <Label htmlFor="ist">IST</Label>
+    <Label htmlFor="ist">Iron Percentage %</Label>
     <Input
       id="ist"
       value={formData.ist}
       onChange={(e) => handleFormChange("ist", e.target.value)}
-      placeholder="Enter IST"
+      placeholder="Enter Iron %"
     />
   </div>
+  {/* Status */}
+<div className="space-y-2">
+  <Label htmlFor="status">Status</Label>
+  <select
+    id="status"
+    value={formData.status}
+    onChange={(e) => handleFormChange("status", e.target.value)}
+    className="w-full border rounded-md p-2 text-sm"
+  >
+    <option value="">Select Status</option>
+    <option value="Done">Done</option>
+    <option value="Not Done">Not Done</option>
+  </select>
+</div>
 
+  {/* FST (optional if needed)
   <div className="space-y-2">
     <Label htmlFor="fst">FST</Label>
     <Input
@@ -768,89 +678,23 @@ export default function LabTestingPage() {
       onChange={(e) => handleFormChange("fst", e.target.value)}
       placeholder="Enter FST"
     />
-  </div>
+  </div> */}
 
-  <div className="space-y-2">
-    <Label htmlFor="plc">PLC</Label>
-    <Input
-      id="plc"
-      type="number"
-      step="0.01"
-      value={formData.plc}
-      onChange={(e) => handleFormChange("plc", e.target.value)}
-      placeholder="Enter PLC"
-    />
-  </div>
 </div>
 
-{/* Second Row - CCS at 110 and other fields */}
-<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-  <div className="space-y-2">
-    <Label htmlFor="ccsAt110">CCS at 110 *</Label>
-    <Input
-      id="ccsAt110"
-      type="number"
-      step="0.01"
-      value={formData.ccsAt110}
-      onChange={(e) => handleFormChange("ccsAt110", e.target.value)}
-      placeholder="Enter CCS at 110"
-      className="border-purple-300 focus:border-purple-600"
-    />
-  </div>
-
-  <div className="space-y-2">
-    <Label htmlFor="ccsAt1100">CCS at 1100</Label>
-    <Input
-      id="ccsAt1100"
-      type="number"
-      step="0.01"
-      value={formData.ccsAt1100}
-      onChange={(e) => handleFormChange("ccsAt1100", e.target.value)}
-      placeholder="Enter CCS at 1100"
-    />
-  </div>
-
-  <div className="space-y-2">
-    <Label htmlFor="bdValue">BD</Label>
-    <Input
-      id="bdValue"
-      type="number"
-      step="0.01"
-      value={formData.bdValue}
-      onChange={(e) => handleFormChange("bdValue", e.target.value)}
-      placeholder="Enter BD"
-    />
-  </div>
-
-  <div className="space-y-2">
-    <Label htmlFor="apValue">AP</Label>
-    <Input
-      id="apValue"
-      type="number"
-      step="0.01"
-      value={formData.apValue}
-      onChange={(e) => handleFormChange("apValue", e.target.value)}
-      placeholder="Enter AP"
-    />
-  </div>
-</div>
-
-{/* Third Row - Remarks (full width) */}
-<div className="grid grid-cols-1 gap-4">
-  <div className="space-y-2">
-    <Label htmlFor="remarks" className="flex items-center gap-2">
-      <span>Remarks</span>
-      <span className="text-xs text-gray-500">(Optional)</span>
-    </Label>
-    <Input
-      id="remarks"
-      value={formData.remarks}
-      onChange={(e) => handleFormChange("remarks", e.target.value)}
-      placeholder="Enter any remarks or notes about the test"
-      className="w-full"
-    />
-  </div>
-</div>
+            <div className="space-y-2">
+              <Label htmlFor="remarks" className="flex items-center gap-2">
+                <span>Remarks</span>
+                <span className="text-xs text-gray-500">(Optional)</span>
+              </Label>
+              <Input
+                id="remarks"
+                value={formData.remarks}
+                onChange={(e) => handleFormChange("remarks", e.target.value)}
+                placeholder="Enter any remarks or notes about the test"
+                className="w-full"
+              />
+            </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>

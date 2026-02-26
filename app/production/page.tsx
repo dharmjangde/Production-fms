@@ -27,11 +27,13 @@ interface ProductionItem {
   _rowIndex: number
   jobCardNo: string
   firmName: string
+
   supervisorName: string
   deliveryOrderNo: string
   partyName: string
   productName: string
   orderQuantity: number
+  plannedDate?: string
   dateOfProduction: string
   shift: string
   notes: string
@@ -42,6 +44,7 @@ interface ProductionItem {
 }
 
 interface HistoryItem extends ProductionItem {
+    timestamp?: string
   rawMaterials: RawMaterial[]
   machineHours: string
   remarks?: string  // Add this
@@ -113,11 +116,13 @@ const formatMachineHours = (hours) => {
 
 // Column Definitions
 const PENDING_COLUMNS_META = [
+
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
+  { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
   { header: "Priority", dataKey: "priority", toggleable: true },
   { header: "Date of Production", dataKey: "dateOfProduction", toggleable: true },
   { header: "Supervisor Name", dataKey: "supervisorName", toggleable: true },
@@ -125,6 +130,7 @@ const PENDING_COLUMNS_META = [
 ]
 
 const HISTORY_COLUMNS_META = [
+  { header: "Timestamp", dataKey: "timestamp", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Actual Quantity", dataKey: "actualQuantity", toggleable: true },
@@ -309,6 +315,7 @@ const pending = pendingFiltered.map((row) => {
     productName: String(row.G || ""),
     orderQuantity: Number(row.H || 0),
     dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
+    plannedDate: row.I ? format(parseGvizDate(row.I), "dd/MM/yy") : "",
     shift: String(row.J || ""),
     notes: String(row.O || ""),
     quantity: Number(row.H || 0),
@@ -340,6 +347,9 @@ setPendingProductions(pending)
 
   return {
     _rowIndex: row._rowIndex,
+    timestamp: productionRecord && productionRecord.timestamp
+  ? format(parseGvizDate(productionRecord.timestamp) || new Date(), "dd/MM/yy")
+  : "",
     jobCardNo: jobCardNo,
     deliveryOrderNo: deliveryOrderNo,
     actualQuantity: actualQuantityFromProdSheet,

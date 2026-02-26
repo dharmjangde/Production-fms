@@ -17,6 +17,7 @@ import {
   Settings,
   LogOut,
   LayoutDashboard,
+  DollarSign,
   Menu, // Import Menu icon for minimize/maximize
   X, // Import X icon for closing
 } from "lucide-react"
@@ -27,13 +28,15 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/orders", label: "Orders", icon: Truck },
   { href: "/full-kitting", label: "Composition", icon: Boxes },
-  { href: "/lab-test", label: "Test Before Production", icon: Settings }, // Add this line
+  { href: "/lab-test", label: "Lab Check Composition", icon: Settings }, // Add this line
   { href: "/job-cards", label: "Job Cards", icon: ClipboardList },
   { href: "/production", label: "Production", icon: Factory },
   { href: "/lab-testing1", label: "Lab Test 1", icon: FlaskConical },
   { href: "/lab-testing2", label: "Lab Test 2", icon: Beaker },
   { href: "/chemical-test", label: "Chemical Test", icon: CheckSquare },
   { href: "/check", label: "Check", icon: FileCheck },
+  { href: "/management", label: "Management Approval", icon: Settings },
+  { href: "/costing", label: "Costing", icon: DollarSign },
   { href: "/tally", label: "Tally", icon: Boxes },
 ]
 

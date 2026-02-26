@@ -25,6 +25,21 @@ interface RawMaterial {
   quantity: number | string
 }
 
+interface CostingData {
+  compositionNo?: string
+  orderNo?: string
+  productName?: string
+  gpPercentage?: string
+  alumina?: string
+  iron?: string
+  bd?: string
+  ap?: string
+  rm1?: string
+  aluminaPercentage?: string
+  ironPercentage?: string
+  planned1?: string
+}
+
 interface ProductionItem {
   _rowIndex: number
   jobCardNo: string
@@ -38,6 +53,16 @@ interface ProductionItem {
   shift: string
   rawMaterials: RawMaterial[]
   machineHours: string
+  // Costing Response fields
+  gpPercentage?: string
+  alumina?: string
+  iron?: string
+  bd?: string
+  ap?: string
+  rm1?: string
+  aluminaPercentage?: string
+  ironPercentage?: string
+  plannedDate?: string
 }
 
 interface HistoryItem {
@@ -56,6 +81,17 @@ interface HistoryItem {
   flowOfMaterial: string
   sieveAnalysisTest: string
   test1CompletedAt: string
+  timestamp?: string
+  // Costing Response fields
+  gpPercentage?: string
+  alumina?: string
+  iron?: string
+  bd?: string
+  ap?: string
+  rm1?: string
+  aluminaPercentage?: string
+  ironPercentage?: string
+  plannedDate?: string
 }
 
 // Constants
@@ -65,6 +101,80 @@ const JOBCARDS_SHEET = "JobCards"
 const MASTER_SHEET = "Master"
 const PRODUCTION_SHEET = "Production"
 const ACTUAL_PRODUCTION_SHEET = "Actual Production"
+const COSTING_RESPONSE_SHEET = "Costing Response"
+
+// Costing Response Sheet Column Indices (0-based)
+const COSTING_COLUMNS = {
+  timestamp: 0,        // A - TIMESTAMP
+  compositionNo: 1,     // B - Composition No.
+  orderNo: 2,          // C - Order No.
+  productName: 3,      // D - product name
+  variableCost: 4,     // E - VARIABLE COST
+  manufacturingCost: 5, // F - Manufacturing Cost
+  interestDays: 6,     // G - Interest (days)
+  interestCost: 7,     // H - Interest Cost
+  transporting: 8,     // I - Transporting (FOR)
+  sellingPrice: 9,     // J - SELLING PRICE
+  gpPercentage: 10,    // K - GP %AGE
+  alumina: 11,         // L - alumina
+  iron: 12,            // M - iron
+  bd: 13,              // N - BD
+  ap: 14,              // O - AP
+  rm1: 15,             // P - RM1
+  rm2: 16,             // Q - RM2
+  rm3: 17,             // R - RM3
+  rm4: 18,             // S - RM4
+  rm5: 19,             // T - RM5
+  rm6: 20,             // U - RM6
+  rm7: 21,             // V - RM7
+  rm8: 22,             // W - RM8
+  rm9: 23,             // X - RM9
+  rm10: 24,            // Y - RM10
+  rm11: 25,            // Z - RM11
+  rm12: 26,            // AA - RM12
+  rm13: 27,            // AB - RM13
+  rm14: 28,            // AC - RM14
+  rm15: 29,            // AD - RM15
+  rm16: 30,            // AE - RM16
+  rm17: 31,            // AF - RM17
+  rm18: 32,            // AG - RM18
+  rm19: 33,            // AH - RM19
+  rm20: 34,            // AI - RM20
+  qty1: 35,            // AJ - QTY1
+  qty2: 36,            // AK - QTY2
+  qty3: 37,            // AL - QTY3
+  qty4: 38,            // AM - QTY4
+  qty5: 39,            // AN - QTY5
+  qty6: 40,            // AO - QTY6
+  qty7: 41,            // AP - QTY7
+  qty8: 42,            // AQ - QTY8
+  qty9: 43,            // AR - QTY9
+  qty10: 44,           // AS - QTY10
+  qty11: 45,           // AT - QTY11
+  qty12: 46,           // AU - QTY12
+  qty13: 47,           // AV - QTY13
+  qty14: 48,           // AW - QTY14
+  qty15: 49,           // AX - QTY15
+  qty16: 50,           // AY - QTY16
+  qty17: 51,           // AZ - QTY17
+  qty18: 52,           // BA - QTY18
+  qty19: 53,           // BB - QTY19
+  qty20: 54,           // BC - QTY20
+  planned1: 55,        // BD - Planned 1
+  actual2: 56,         // BE - Actual 2
+  timeDelay1: 57,      // BF - Time Delay 1
+  aluminaPercentage: 58, // BG - Alumina Percentage %
+  ironPercentage: 59,   // BH - Iron Percentage %
+  fst: 60,             // BI - FST
+  ccsAt110: 61,        // BJ - CCS at 110
+  ccsAt1100: 62,       // BK - CCS at 1100
+  plc: 63,             // BL - PLC
+  bd2: 64,             // BM - BD
+  ap2: 65,             // BN - AP
+  planned2: 66,        // BO - Planned 2
+  actual3: 67,         // BP - Actual 3
+  remarks: 68,         // BQ - Remarks
+}
 
 // Add this function for formatting machine hours
 const formatMachineHours = (hours) => {
@@ -101,8 +211,6 @@ const formatMachineHours = (hours) => {
   return hoursStr
 }
 
-// ✅ Convert any GViz Date(...) OR normal value to plain text
-
 // Column Mapping for Lab Test 1 Data
 const LAB_TEST_1_COLUMNS = {
   test1CompletedAt: 20, // Column T
@@ -117,11 +225,13 @@ const LAB_TEST_1_COLUMNS = {
   sieveAnalysis: 30, // Column AD
 }
 
-// Column Definitions
+// Column Definitions - Updated with Costing Response fields
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
+  { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
   { header: "Priority", dataKey: "priority", toggleable: true },
   { header: "Date of Production", dataKey: "dateOfProduction", toggleable: true },
@@ -129,11 +239,23 @@ const PENDING_COLUMNS_META = [
   { header: "Shift", dataKey: "shift", toggleable: true },
   { header: "Raw Materials", dataKey: "rawMaterials", toggleable: true },
   { header: "Machine Hours", dataKey: "machineHours", toggleable: true },
+  // Costing Response fields
+  // { header: "GP %AGE", dataKey: "gpPercentage", toggleable: true },
+  // { header: "Alumina", dataKey: "alumina", toggleable: true },
+  // { header: "Iron", dataKey: "iron", toggleable: true },
+  // { header: "BD", dataKey: "bd", toggleable: true },
+  // { header: "AP", dataKey: "ap", toggleable: true },
+  // { header: "RM1", dataKey: "rm1", toggleable: true },
+  // { header: "Alumina %", dataKey: "aluminaPercentage", toggleable: true },
+  // { header: "Iron %", dataKey: "ironPercentage", toggleable: true },
 ]
 
 const HISTORY_COLUMNS_META = [
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
+  { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
+  { header: "Timestamp", dataKey: "timestamp", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
   { header: "Test Status", dataKey: "testStatus", toggleable: true },
   { header: "Date of Test", dataKey: "dateOfTest", toggleable: true },
@@ -144,6 +266,15 @@ const HISTORY_COLUMNS_META = [
   { header: "What To Be Mixed", dataKey: "whatToBeMixed", toggleable: true },
   { header: "Flow of Material", dataKey: "flowOfMaterial", toggleable: true },
   { header: "Sieve Analysis Test", dataKey: "sieveAnalysisTest", toggleable: true },
+  // Costing Response fields
+  // { header: "GP %AGE", dataKey: "gpPercentage", toggleable: true },
+  // { header: "Alumina", dataKey: "alumina", toggleable: true },
+  // { header: "Iron", dataKey: "iron", toggleable: true },
+  // { header: "BD", dataKey: "bd", toggleable: true },
+  // { header: "AP", dataKey: "ap", toggleable: true },
+  // { header: "RM1", dataKey: "rm1", toggleable: true },
+  // { header: "Alumina %", dataKey: "aluminaPercentage", toggleable: true },
+  // { header: "Iron %", dataKey: "ironPercentage", toggleable: true },
 ]
 
 // Initial State for Form
@@ -181,6 +312,7 @@ export default function LabTesting1Page() {
   const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET)
   const { fetchData: fetchProductionData } = useGoogleSheet(PRODUCTION_SHEET)
   const { fetchData: fetchActualProductionData } = useGoogleSheet(ACTUAL_PRODUCTION_SHEET)
+  const { fetchData: fetchCostingResponseData } = useGoogleSheet(COSTING_RESPONSE_SHEET)
 
   const processGvizTable = (table) => {
     if (!table || !table.rows || table.rows.length === 0) {
@@ -225,11 +357,18 @@ export default function LabTesting1Page() {
     setLoading(true)
     setError(null)
     try {
-      const [jobCardsTable, masterTable, productionTable, actualProductionTable] = await Promise.all([
+      const [
+        jobCardsTable, 
+        masterTable, 
+        productionTable, 
+        actualProductionTable,
+        costingResponseTable
+      ] = await Promise.all([
         fetchJobCardsData(),
         fetchMasterData(),
         fetchProductionData(),
         fetchActualProductionData(),
+        fetchCostingResponseData(),
       ])
 
       const processGvizTable = (table) => {
@@ -263,8 +402,43 @@ export default function LabTesting1Page() {
       const masterDataRows = processGvizTable(masterTable)
       const productionDataRows = processGvizTable(productionTable)
       const actualProductionDataRows = processGvizTable(actualProductionTable)
+      const costingResponseDataRows = processGvizTable(costingResponseTable)
 
-      // Create a map for actual production data using the same logic as production page
+      // Create a map for costing response data using Composition No. (which should match Job Card No.)
+      const costingDataMap = new Map()
+      costingResponseDataRows.forEach((row) => {
+        // Get the composition number (this should match the Job Card No.)
+        const compositionNo = row[COSTING_COLUMNS.compositionNo] ? String(row[COSTING_COLUMNS.compositionNo]).trim() : ""
+        
+        if (compositionNo) {
+          // Parse planned date if available
+          let plannedDate = ""
+          if (row[COSTING_COLUMNS.planned1]) {
+            try {
+              plannedDate = format(parseGvizDate(row[COSTING_COLUMNS.planned1]), "dd/MM/yyyy")
+            } catch {
+              plannedDate = String(row[COSTING_COLUMNS.planned1])
+            }
+          }
+
+          costingDataMap.set(compositionNo, {
+            compositionNo: compositionNo,
+            orderNo: row[COSTING_COLUMNS.orderNo] ? String(row[COSTING_COLUMNS.orderNo]) : "",
+            productName: row[COSTING_COLUMNS.productName] ? String(row[COSTING_COLUMNS.productName]) : "",
+            gpPercentage: row[COSTING_COLUMNS.gpPercentage] ? String(row[COSTING_COLUMNS.gpPercentage]) : "",
+            alumina: row[COSTING_COLUMNS.alumina] ? String(row[COSTING_COLUMNS.alumina]) : "",
+            iron: row[COSTING_COLUMNS.iron] ? String(row[COSTING_COLUMNS.iron]) : "",
+            bd: row[COSTING_COLUMNS.bd] ? String(row[COSTING_COLUMNS.bd]) : "",
+            ap: row[COSTING_COLUMNS.ap] ? String(row[COSTING_COLUMNS.ap]) : "",
+            rm1: row[COSTING_COLUMNS.rm1] ? String(row[COSTING_COLUMNS.rm1]) : "",
+            aluminaPercentage: row[COSTING_COLUMNS.aluminaPercentage] ? String(row[COSTING_COLUMNS.aluminaPercentage]) : "",
+            ironPercentage: row[COSTING_COLUMNS.ironPercentage] ? String(row[COSTING_COLUMNS.ironPercentage]) : "",
+            plannedDate: plannedDate,
+          })
+        }
+      })
+
+      // Create a map for actual production data
       const productionDataMap = new Map()
       actualProductionDataRows.forEach((row) => {
         const jobCardNo = String(row.B || "").trim()
@@ -345,12 +519,15 @@ export default function LabTesting1Page() {
 
           // Get actual production data
           const productionData = productionDataMap.get(jobCardNo)
+          
+          // Get costing response data using Job Card No. (which should match Composition No.)
+          const costingData = costingDataMap.get(jobCardNo) || {}
 
           return {
             _rowIndex: row._rowIndex,
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
-            productName: String(row.G || ""),
+            productName: costingData.productName || String(row.G || ""),
             quantity: Number(row.H || 0),
             dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
             supervisorName: String(row.D || ""),
@@ -359,6 +536,16 @@ export default function LabTesting1Page() {
             priority: String(productionRow?.H || ""),
             rawMaterials: productionData ? productionData.rawMaterials : [],
             machineHours: productionData ? productionData.machineHours : "-",
+            // Costing Response fields
+            gpPercentage: costingData.gpPercentage || "-",
+            alumina: costingData.alumina || "-",
+            iron: costingData.iron || "-",
+            bd: costingData.bd || "-",
+            ap: costingData.ap || "-",
+            rm1: costingData.rm1 || "-",
+            aluminaPercentage: costingData.aluminaPercentage || "-",
+            ironPercentage: costingData.ironPercentage || "-",
+            plannedDate: costingData.plannedDate || "-",
           }
         })
 
@@ -372,33 +559,54 @@ export default function LabTesting1Page() {
             row.T !== null &&
             String(row.T).trim() !== ""
         )
-        .map((row) => ({
-          _rowIndex: row._rowIndex,
-          jobCardNo: String(row.B || ""),
-          deliveryOrderNo: String(row.E || ""),
-          productName: String(row.G || ""),
-          quantity: Number(row.H || 0),
-          testStatus: String(row.V || ""),
-          dateOfTest: row.W ? (() => { try { return format(parseGvizDate(row.W), "dd/MM/yy") } catch { return String(row.W) } })() : "",
-          testedBy: String(row.Y || ""),
-          wcPercentage: String(row.X || ""),
+        .map((row) => {
+          const jobCardNo = String(row.B || "")
+          const costingData = costingDataMap.get(jobCardNo) || {}
+          
+          // Parse timestamp from test completion
+          let timestamp = ""
+          if (row.T) {
+            try {
+              timestamp = format(parseGvizDate(row.T), "dd/MM/yyyy HH:mm:ss")
+            } catch {
+              timestamp = String(row.T)
+            }
+          }
 
-          // ✅ JUST FETCH & SHOW — strip leading apostrophe added during save
-          initialSettingTime: String(row.Z || "").replace(/^'/, ""),
-          finalSettingTime: String(row.AB || "").replace(/^'/, ""),
-          whatToBeMixed: String(row.AC || ""),   // ✅ FIXED
-          flowOfMaterial: String(row.AA || ""),
-          sieveAnalysisTest: String(row.AD || ""),
-
-          test1CompletedAt: row.T ? String(row.T) : "",
-        }))
-
+          return {
+            _rowIndex: row._rowIndex,
+            jobCardNo: jobCardNo,
+            deliveryOrderNo: String(row.E || ""),
+            productName: costingData.productName || String(row.G || ""),
+            quantity: Number(row.H || 0),
+            testStatus: String(row.V || ""),
+            dateOfTest: row.W ? (() => { try { return format(parseGvizDate(row.W), "dd/MM/yy") } catch { return String(row.W) } })() : "",
+            testedBy: String(row.Y || ""),
+            wcPercentage: String(row.X || ""),
+            initialSettingTime: String(row.Z || "").replace(/^'/, ""),
+            finalSettingTime: String(row.AB || "").replace(/^'/, ""),
+            whatToBeMixed: String(row.AC || ""),
+            flowOfMaterial: String(row.AA || ""),
+            sieveAnalysisTest: String(row.AD || ""),
+            test1CompletedAt: row.T ? String(row.T) : "",
+            timestamp: timestamp,
+            // Costing Response fields
+            gpPercentage: costingData.gpPercentage || "-",
+            alumina: costingData.alumina || "-",
+            iron: costingData.iron || "-",
+            bd: costingData.bd || "-",
+            ap: costingData.ap || "-",
+            rm1: costingData.rm1 || "-",
+            aluminaPercentage: costingData.aluminaPercentage || "-",
+            ironPercentage: costingData.ironPercentage || "-",
+            plannedDate: costingData.plannedDate || "-",
+          }
+        })
         .sort((a, b) => {
           if (a.test1CompletedAt > b.test1CompletedAt) return -1
           if (a.test1CompletedAt < b.test1CompletedAt) return 1
           return 0
         })
-
 
       setHistoryTests(historyFiltered)
 
@@ -417,7 +625,7 @@ export default function LabTesting1Page() {
     } finally {
       setLoading(false)
     }
-  }, [fetchJobCardsData, fetchMasterData, fetchProductionData, fetchActualProductionData])
+  }, [fetchJobCardsData, fetchMasterData, fetchProductionData, fetchActualProductionData, fetchCostingResponseData])
 
   useEffect(() => {
     loadAllData()
@@ -434,13 +642,6 @@ export default function LabTesting1Page() {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  // const handleTimeInputChange = (field, value) => {
-  //   setFormData((prev) => ({
-  //     ...prev,
-  //     [field]: { ...prev[field], h: value },
-  //   }))
-  // }
-
   const validateForm = () => {
     const errors = {}
 
@@ -453,12 +654,6 @@ export default function LabTesting1Page() {
       errors.wcPercentage = "Percentage cannot be over 100."
     }
     if (!formData.testedBy) errors.testedBy = "Tested By is required."
-    // if (formData.initialSettingTime.h && !timeRegex.test(formData.initialSettingTime.h)) {
-    //   errors.initialSettingTime = "Initial Setting Time must be in HH:MM:SS format."
-    // }
-    // if (formData.finalSettingTime.h && !timeRegex.test(formData.finalSettingTime.h)) {
-    //   errors.finalSettingTime = "Final Setting Time must be in HH:MM:SS format."
-    // }
 
     setFormErrors(errors)
     return Object.keys(errors).length === 0
@@ -822,6 +1017,12 @@ export default function LabTesting1Page() {
                 <Label className="text-xs">Product</Label>
                 <p className="text-sm font-semibold">{selectedProduction?.productName}</p>
               </div>
+              {selectedProduction?.plannedDate && selectedProduction.plannedDate !== "-" && (
+                <div>
+                  <Label className="text-xs">Planned Date</Label>
+                  <p className="text-sm font-semibold">{selectedProduction.plannedDate}</p>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from "react"
-import { Calendar as CalendarIcon, Loader2, FileText, Plus, Settings, Eye } from "lucide-react"
+import { Calendar as CalendarIcon, Loader2, FileText, Plus, Settings, Eye, XCircle } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +39,7 @@ interface ProductionItem {
   productionPending: string
   status: string
   dateOfCompletePlanning: string
+  cancelReason: string // For column AA
 }
 
 // Column Definitions for Job Cards Table
@@ -54,6 +55,7 @@ const JOBCARD_COLUMNS_META = [
   { header: "Status", dataKey: "status", toggleable: true },
   { header: "CRM Name", dataKey: "crmName", toggleable: true },
   { header: "Order Cancel", dataKey: "orderCancel", toggleable: true },
+  { header: "Cancel Reason", dataKey: "cancelReason", toggleable: true },
   { header: "Actual Planned", dataKey: "actualProductionPlanned", toggleable: true },
   { header: "Actual Done", dataKey: "actualProductionDone", toggleable: true },
   { header: "Stock Trans.", dataKey: "stockTransferred", toggleable: true },
@@ -63,16 +65,22 @@ const JOBCARD_COLUMNS_META = [
   { header: "Prod Pend.", dataKey: "productionPending", toggleable: true },
   { header: "Complete Plan", dataKey: "dateOfCompletePlanning", toggleable: true },
   { header: "Notes", dataKey: "note", toggleable: true },
+  { header: "Action", dataKey: "action", alwaysVisible: true, toggleable: false },
 ]
 
 export default function OrdersPage() {
   const [date, setDate] = useState<Date | undefined>()
   const [priority, setPriority] = useState("")
-  const [priorityOptions] = useState(["Normal",  "Urgent"])
+  const [priorityOptions] = useState(["Normal", "Urgent"])
   const [loading, setLoading] = useState(false)
   const [fetchingData, setFetchingData] = useState(true)
   const [isFormOpen, setIsFormOpen] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<ProductionItem | null>(null)
+  const [cancelQuantity, setCancelQuantity] = useState("")
+  const [cancelReason, setCancelReason] = useState("")
   const [activeTab, setActiveTab] = useState("all")
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false)
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({})
@@ -116,7 +124,6 @@ export default function OrdersPage() {
     return value;
   };
 
-
   // State for form data
   const [formData, setFormData] = useState({
     firmName: "",
@@ -144,17 +151,19 @@ export default function OrdersPage() {
       expectedDeliveryDate: true,
       status: true,
       quantityDelivered: true,
+      actualProductionPlanned: true,
+      actualProductionDone: true,
+      stockTransferred: true,
+      quantityInStock: true,
+      planningPending: true,
+      productionPending: true,
+      action: true,
 
       // बाकी सब hidden by default
       priority: false,
       crmName: false,
       orderCancel: false,
-      actualProductionPlanned: false,
-      actualProductionDone: false,
-      stockTransferred: false,
-      quantityInStock: false,
-      planningPending: false,
-      productionPending: false,
+      cancelReason: false,
       dateOfCompletePlanning: false,
       note: false,
     }
@@ -190,41 +199,7 @@ export default function OrdersPage() {
         }
 
         // Fetch Production sheet for table data
-        const productionUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Production&headers=0`;
-        const productionResponse = await fetch(productionUrl);
-        if (productionResponse.ok) {
-          const productionText = await productionResponse.text();
-          const productionMatch = productionText.match(/google\.visualization\.Query\.setResponse\((.*)\)/);
-          if (productionMatch && productionMatch[1]) {
-            const gvizResponse = JSON.parse(productionMatch[1]);
-
-            // Skip 5 header rows as per the user's request and screenshot structure
-            const rows = gvizResponse.table.rows.slice(3).map((row: any) => ({
-              timestamp: row.c[0]?.v || "",
-              deliveryOrderNo: row.c[1]?.v || "",
-              firmName: row.c[2]?.v || "",
-              partyName: row.c[3]?.v || "",
-              productName: row.c[4]?.v || "",
-              orderQuantity: row.c[5]?.v || "",
-              expectedDeliveryDate: row.c[6]?.v || "",
-              priority: row.c[7]?.v || "",
-              note: row.c[8]?.v || "",
-              crmName: row.c[9]?.v || "",
-              orderCancel: row.c[10]?.v || "",
-              actualProductionPlanned: row.c[11]?.v || "",
-              actualProductionDone: row.c[12]?.v || "",
-              stockTransferred: row.c[13]?.v || "",
-              quantityDelivered: row.c[14]?.v || "",
-              quantityInStock: row.c[15]?.v || "",
-              planningPending: row.c[16]?.v || "",
-              productionPending: row.c[17]?.v || "",
-              status: row.c[18]?.v || "",
-              dateOfCompletePlanning: row.c[19]?.v || "",
-            })).filter((row: any) => row.timestamp || row.deliveryOrderNo);
-
-            setProductionData(rows);
-          }
-        }
+        await fetchProductionData();
 
       } catch (error) {
         console.error("Failed to fetch data:", error);
@@ -236,6 +211,49 @@ export default function OrdersPage() {
 
     fetchAllData();
   }, [SHEET_ID]);
+
+  const fetchProductionData = async () => {
+    try {
+      const productionUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Production&headers=0&cb=${new Date().getTime()}`;
+      const productionResponse = await fetch(productionUrl);
+      if (productionResponse.ok) {
+        const productionText = await productionResponse.text();
+        const productionMatch = productionText.match(/google\.visualization\.Query\.setResponse\((.*)\)/);
+        if (productionMatch && productionMatch[1]) {
+          const gvizResponse = JSON.parse(productionMatch[1]);
+
+          // Skip 5 header rows as per the user's request and screenshot structure
+          const rows = gvizResponse.table.rows.slice(3).map((row: any) => ({
+            timestamp: row.c[0]?.v || "",
+            deliveryOrderNo: row.c[1]?.v || "",
+            firmName: row.c[2]?.v || "",
+            partyName: row.c[3]?.v || "",
+            productName: row.c[4]?.v || "",
+            orderQuantity: row.c[5]?.v || "",
+            expectedDeliveryDate: row.c[6]?.v || "",
+            priority: row.c[7]?.v || "",
+            note: row.c[8]?.v || "",
+            crmName: row.c[9]?.v || "",
+            orderCancel: row.c[10]?.v || "",
+            actualProductionPlanned: row.c[11]?.v || "",
+            actualProductionDone: row.c[12]?.v || "",
+            stockTransferred: row.c[13]?.v || "",
+            quantityDelivered: row.c[14]?.v || "",
+            quantityInStock: row.c[15]?.v || "",
+            planningPending: row.c[16]?.v || "",
+            productionPending: row.c[17]?.v || "",
+            status: row.c[18]?.v || "",
+            dateOfCompletePlanning: row.c[19]?.v || "",
+            cancelReason: row.c[26]?.v || "", // Column AA (index 26)
+          })).filter((row: any) => row.timestamp || row.deliveryOrderNo);
+
+          setProductionData(rows);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch production data:", error);
+    }
+  };
 
   // Handle Firm Name selection
   const handleFirmChange = (selectedFirm: string) => {
@@ -295,29 +313,30 @@ export default function OrdersPage() {
       const formattedTimestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
       const expectedDeliveryFormatted = date ? `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}` : ""
 
-      // Row data array matching columns A to T
-      const rowDataArray = [
-        formattedTimestamp,                    // A: Timestamp
-        formData.deliveryOrderNo.trim(),       // B: Delivery Order No.
-        formData.firmName.trim(),               // C: FIRM Name
-        formData.partyName.trim(),              // D: Party Name
-        formData.productName.trim(),             // E: Product Name
-        formData.orderQuantity.trim(),           // F: Order Quantity
-        expectedDeliveryFormatted,               // G: Expected Delivery Date
-        priority,                                // H: Priority
-        formData.note.trim(),                    // I: Note
-        "",                                      // J: Crm Name
-        "",                                      // K: Order Cancel
-        "",                                      // L: Actual Production Planned
-        "",                                      // M: Actual Production Done
-        "",                                      // N: Stock Transferred
-        "",                                      // O: Quantity Delivered
-        "",                                      // P: Quantity In Stock
-        "",                                      // Q: Planning Pending
-        "",                                      // R: Production Pending
-        "Pending",                               // S: Status
-        "",                                      // T: Date Of Complete Planning
-      ];
+      // Row data array matching columns A to AA (27 columns)
+      const rowDataArray = new Array(27).fill("");
+      rowDataArray[0] = formattedTimestamp;                    // A: Timestamp
+      rowDataArray[1] = formData.deliveryOrderNo.trim();       // B: Delivery Order No.
+      rowDataArray[2] = formData.firmName.trim();              // C: FIRM Name
+      rowDataArray[3] = formData.partyName.trim();             // D: Party Name
+      rowDataArray[4] = formData.productName.trim();           // E: Product Name
+      rowDataArray[5] = formData.orderQuantity.trim();         // F: Order Quantity
+      rowDataArray[6] = expectedDeliveryFormatted;              // G: Expected Delivery Date
+      rowDataArray[7] = priority;                               // H: Priority
+      rowDataArray[8] = formData.note.trim();                   // I: Note
+      rowDataArray[9] = "";                                     // J: Crm Name
+      rowDataArray[10] = "";                                    // K: Order Cancel
+      rowDataArray[11] = "";                                    // L: Actual Production Planned
+      rowDataArray[12] = "";                                    // M: Actual Production Done
+      rowDataArray[13] = "";                                    // N: Stock Transferred
+      rowDataArray[14] = "";                                    // O: Quantity Delivered
+      rowDataArray[15] = "";                                    // P: Quantity In Stock
+      rowDataArray[16] = "";                                    // Q: Planning Pending
+      rowDataArray[17] = "";                                    // R: Production Pending
+      rowDataArray[18] = "Pending";                             // S: Status
+      rowDataArray[19] = "";                                    // T: Date Of Complete Planning
+      // U to Z are empty (columns 20-25)
+      rowDataArray[26] = "";                                    // AA: Cancel Reason
 
       const body = new URLSearchParams({
         sheetName: "Production",
@@ -343,40 +362,7 @@ export default function OrdersPage() {
         setIsFormOpen(false); // Close the modal after submission
 
         // Refresh production data
-        const productionUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Production&headers=0&cb=${new Date().getTime()}`;
-        const productionResponse = await fetch(productionUrl);
-        if (productionResponse.ok) {
-          const productionText = await productionResponse.text();
-          const productionMatch = productionText.match(/google\.visualization\.Query\.setResponse\((.*)\)/);
-          if (productionMatch && productionMatch[1]) {
-            const gvizResponse = JSON.parse(productionMatch[1]);
-            // Skip 5 header rows as per the user's request and screenshot structure
-            const rows = gvizResponse.table.rows.slice(3).map((row: any) => ({
-              timestamp: row.c[0]?.v || "",
-              deliveryOrderNo: row.c[1]?.v || "",
-              firmName: row.c[2]?.v || "",
-              partyName: row.c[3]?.v || "",
-              productName: row.c[4]?.v || "",
-              orderQuantity: row.c[5]?.v || "",
-              expectedDeliveryDate: row.c[6]?.v || "",
-              priority: row.c[7]?.v || "",
-              note: row.c[8]?.v || "",
-              crmName: row.c[9]?.v || "",
-              orderCancel: row.c[10]?.v || "",
-              actualProductionPlanned: row.c[11]?.v || "",
-              actualProductionDone: row.c[12]?.v || "",
-              stockTransferred: row.c[13]?.v || "",
-              quantityDelivered: row.c[14]?.v || "",
-              quantityInStock: row.c[15]?.v || "",
-              planningPending: row.c[16]?.v || "",
-              productionPending: row.c[17]?.v || "",
-              status: row.c[18]?.v || "",
-              dateOfCompletePlanning: row.c[19]?.v || "",
-            })).filter((row: any) => row.timestamp || row.deliveryOrderNo);
-
-            setProductionData(rows);
-          }
-        }
+        await fetchProductionData();
       } else {
         throw new Error(result.error || "An unknown error occurred during submission.");
       }
@@ -388,6 +374,106 @@ export default function OrdersPage() {
       setLoading(false)
     }
   }
+
+  const handleCancelOrder = (item: ProductionItem) => {
+    setSelectedItem(item);
+    setCancelQuantity("");
+    setCancelReason("");
+    setIsCancelDialogOpen(true);
+  };
+
+ const submitCancelOrder = async () => {
+  if (!selectedItem) return;
+
+  if (!cancelQuantity || Number(cancelQuantity) <= 0) {
+    alert("Please enter a valid cancel quantity");
+    return;
+  }
+
+  if (!cancelReason.trim()) {
+    alert("Please enter a reason for cancellation");
+    return;
+  }
+
+  setIsSubmittingCancel(true);
+
+  try {
+    // Fetch Production sheet
+    const productionUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Production`;
+    const response = await fetch(productionUrl);
+    const text = await response.text();
+
+    const match = text.match(/google\.visualization\.Query\.setResponse\((.*)\)/);
+    if (!match || !match[1]) {
+      throw new Error("Failed to parse Production sheet");
+    }
+
+    const gviz = JSON.parse(match[1]);
+    const rows = gviz.table.rows;
+
+    let targetRowIndex = -1;
+
+    /**
+     * IMPORTANT:
+     * Your real data starts AFTER 3 header rows
+     * So we need to start from index 3 (skip first 3 header rows)
+     */
+    for (let i = 3; i < rows.length; i++) {
+      const row = rows[i];
+      const doNo = row.c?.[1]?.v; // Column B (index 1) contains DO No.
+      
+      const sheetDo = String(doNo || "").trim().toUpperCase();
+      const selectedDo = String(selectedItem.deliveryOrderNo || "").trim().toUpperCase();
+
+      if (sheetDo === selectedDo) {
+        targetRowIndex = i + 4; // Google sheet rows are 1-based, but we need actual sheet row number
+        break;
+      }
+    }
+
+    if (targetRowIndex === -1) {
+      throw new Error("Delivery Order No not found in Production sheet");
+    }
+
+    // Column Index Mapping (ZERO BASED for cellUpdates)
+    const cellUpdates = {
+      11: cancelQuantity,  // K → Order Cancel (index 10)
+      27: cancelReason     // AA → Cancel Reason (index 26)
+    };
+
+    const body = new URLSearchParams({
+      sheetName: "Production",
+      action: "updateCells",
+      rowIndex: targetRowIndex.toString(),
+      cellUpdates: JSON.stringify(cellUpdates)
+    });
+
+    const updateResponse = await fetch(WEB_APP_URL, {
+      method: "POST",
+      body
+    });
+
+    const result = await updateResponse.json();
+
+    if (!result.success) {
+      throw new Error(result.error || "Failed to cancel order");
+    }
+
+    alert("Order cancelled successfully!");
+
+    setIsCancelDialogOpen(false);
+    setCancelQuantity("");
+    setCancelReason("");
+
+    await fetchProductionData(); // refresh table
+
+  } catch (error) {
+    console.error(error);
+    alert(error instanceof Error ? error.message : "Cancel failed");
+  } finally {
+    setIsSubmittingCancel(false);
+  }
+};
 
   const formatDate = (date: Date) =>
     date.toLocaleDateString('en-US', {
@@ -422,6 +508,8 @@ export default function OrdersPage() {
         return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">In Progress</Badge>
       case 'completed':
         return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Completed</Badge>
+      case 'cancelled':
+        return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">Cancelled</Badge>
       default:
         return <Badge variant="outline">{status || '-'}</Badge>
     }
@@ -439,6 +527,8 @@ export default function OrdersPage() {
           item.status?.toLowerCase() === 'complete' ||
           item.status?.toLowerCase() === 'done'
       )
+    if (activeTab === "cancelled")
+      return productionData.filter(item => item.orderCancel && item.orderCancel !== "")
     return productionData
   }, [productionData, activeTab])
 
@@ -457,7 +547,9 @@ export default function OrdersPage() {
   const handleSelectAllColumns = (checked: boolean) => {
     const newVisibility: Record<string, boolean> = {}
     JOBCARD_COLUMNS_META.forEach((col) => {
-      newVisibility[col.dataKey] = checked
+      if (col.toggleable !== false) {
+        newVisibility[col.dataKey] = checked
+      }
     })
     setVisibleColumns(newVisibility)
   }
@@ -494,7 +586,7 @@ export default function OrdersPage() {
             </Button>
           </div>
           <div className="space-y-1.5 max-h-48 overflow-y-auto">
-            {JOBCARD_COLUMNS_META.map((col) => (
+            {JOBCARD_COLUMNS_META.filter(col => col.toggleable !== false).map((col) => (
               <div key={`toggle-${col.dataKey}`} className="flex items-center space-x-2">
                 <Checkbox
                   id={`toggle-${col.dataKey}`}
@@ -530,7 +622,7 @@ export default function OrdersPage() {
             <div className="flex items-center gap-2">
               <FileText className="h-6 w-6 text-purple-600" />
               <div>
-                <CardTitle className="text-gray-800">Job Card Management </CardTitle>
+                <CardTitle className="text-gray-800">Job Card Management  </CardTitle>
                 <CardDescription className="text-gray-700">
                   Create and manage job cards for production orders
                 </CardDescription>
@@ -548,7 +640,7 @@ export default function OrdersPage() {
       </Card>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="bg-gradient-to-br from-purple-50 to-white border-purple-100">
           <CardContent className="p-4">
             <p className="text-xs sm:text-sm text-purple-600 font-medium">Total Job Cards</p>
@@ -567,7 +659,7 @@ export default function OrdersPage() {
           <CardContent className="p-4">
             <p className="text-xs sm:text-sm text-blue-600 font-medium">In Progress</p>
             <p className="text-xl sm:text-2xl font-bold text-gray-900">
-              {productionData.filter(item => item.status?.toLowerCase() === 'in progress').length}
+              {productionData.filter(item => item.status?.toLowerCase() === 'in progress' || item.status?.toLowerCase() === 'in-progress').length}
             </p>
           </CardContent>
         </Card>
@@ -579,6 +671,14 @@ export default function OrdersPage() {
             </p>
           </CardContent>
         </Card>
+        <Card className="bg-gradient-to-br from-gray-50 to-white border-gray-100">
+          <CardContent className="p-4">
+            <p className="text-xs sm:text-sm text-gray-600 font-medium">Cancelled</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">
+              {productionData.filter(item => item.orderCancel && item.orderCancel !== "").length}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Main Content Card with Tabs */}
@@ -586,11 +686,12 @@ export default function OrdersPage() {
         <CardHeader className="bg-purple-50/60 rounded-t-lg py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
-              <TabsList className="grid w-full sm:w-[400px] grid-cols-4">
+              <TabsList className="grid w-full sm:w-[500px] grid-cols-5">
                 <TabsTrigger value="all" className="text-xs sm:text-sm">All</TabsTrigger>
                 <TabsTrigger value="pending" className="text-xs sm:text-sm">Pending</TabsTrigger>
-                <TabsTrigger value="in-progress" className="text-xs sm:text-sm">In Progress</TabsTrigger>
+                {/* <TabsTrigger value="in-progress" className="text-xs sm:text-sm">In Progress</TabsTrigger> */}
                 <TabsTrigger value="completed" className="text-xs sm:text-sm">Completed</TabsTrigger>
+                <TabsTrigger value="cancelled" className="text-xs sm:text-sm">Cancelled</TabsTrigger>
               </TabsList>
             </Tabs>
             <ColumnToggler />
@@ -614,10 +715,25 @@ export default function OrdersPage() {
                     <TableRow key={index} className="hover:bg-purple-50/50">
                       {visibleColumnsMeta.map((col) => (
                         <TableCell key={col.dataKey} className="whitespace-nowrap text-xs sm:text-sm py-2 px-3">
-                          {col.dataKey === "priority" ? (
+                          {col.dataKey === "action" ? (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleCancelOrder(item)}
+                              disabled={!!item.orderCancel}
+                              className={item.orderCancel ? "opacity-50 cursor-not-allowed" : ""}
+                            >
+                              <XCircle className="h-4 w-4 mr-1" />
+                              {item.orderCancel ? "Cancelled" : "Cancel"}
+                            </Button>
+                          ) : col.dataKey === "priority" ? (
                             getPriorityBadge(item.priority)
                           ) : col.dataKey === "status" ? (
-                            getStatusBadge(item.status)
+                            getStatusBadge(item.orderCancel ? "Cancelled" : item.status)
+                          ) : col.dataKey === "orderCancel" ? (
+                            item.orderCancel || '-'
+                          ) : col.dataKey === "cancelReason" ? (
+                            item.cancelReason || '-'
                           ) : col.dataKey === "note" ? (
                             <span className="max-w-[200px] truncate block" title={item.note}>
                               {item.note || '-'}
@@ -799,6 +915,83 @@ export default function OrdersPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Order Dialog */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel Order Quantity</DialogTitle>
+            <DialogDescription>
+              Enter the quantity to cancel and reason for cancellation.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {selectedItem && (
+              <>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="font-medium text-gray-500">DO No.</p>
+                    <p>{selectedItem.deliveryOrderNo}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-500">Product</p>
+                    <p>{selectedItem.productName}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-500">Order Qty</p>
+                    <p>{selectedItem.orderQuantity}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cancelQuantity">Cancel Quantity *</Label>
+                  <Input
+                    id="cancelQuantity"
+                    type="number"
+                    min="1"
+                    max={selectedItem.orderQuantity}
+                    value={cancelQuantity}
+                    onChange={(e) => setCancelQuantity(e.target.value)}
+                    placeholder="Enter quantity to cancel"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cancelReason">Reason for Cancellation *</Label>
+                  <Textarea
+                    id="cancelReason"
+                    rows={3}
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    placeholder="Enter reason for cancellation..."
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsCancelDialogOpen(false)}
+              disabled={isSubmittingCancel}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={submitCancelOrder}
+              disabled={isSubmittingCancel}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isSubmittingCancel && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmittingCancel ? "Processing..." : "Submit Cancellation"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

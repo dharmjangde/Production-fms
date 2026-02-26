@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, CalendarIcon, FileCheck, History, AlertTriangle, Settings } from "lucide-react"
+import { Loader2, CalendarIcon, FileCheck, History, AlertTriangle, Settings, XCircle } from "lucide-react"
 import { format } from "date-fns"
 import { useGoogleSheet, parseGvizDate } from "@/lib/g-sheets"
 
@@ -51,8 +51,11 @@ interface JobCard {
   notes: string
   createdAt: string
   totalMade: number
+  cancelQty: number
+  cancelRemarks: string
   expectedDeliveryDate: string
   priority: string
+  status: 'active' | 'cancelled'
 }
 
 interface GvizRow {
@@ -67,28 +70,36 @@ const JOBCARDS_SHEET = "JobCards"
 const MASTER_SHEET = "Master"
 const COSTING_RESPONSE_SHEET = "Costing Response"
 
-// Column definitions - Updated to remove Note column from pending and Notes column from history
+// Column definitions based on your actual JobCards sheet structure
 const PENDING_ORDERS_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", toggleable: false, alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true, alwaysVisible: true },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Order Quantity", dataKey: "orderQuantity", toggleable: true },
+  { header: "Planned Date", dataKey: "plannedDate", toggleable: true }, // ✅ ADDED
+
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
   { header: "Priority", dataKey: "priority", toggleable: true },
-  // Removed Note column
 ]
 
 const HISTORY_COLUMNS_META = [
+  { header: "Timestamp", dataKey: "createdAt", toggleable: true, alwaysVisible: true }, // ✅ ADDED
   { header: "Job Card No.", dataKey: "jobCardNo", toggleable: true, alwaysVisible: true },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
+  { header: "Supervisor", dataKey: "supervisorName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
-  { header: "Quantity", dataKey: "totalMade", toggleable: true },
-  { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
-  { header: "Priority", dataKey: "priority", toggleable: true },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
+  { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Order Qty", dataKey: "orderQuantity", toggleable: true },
   { header: "Date of Production", dataKey: "dateOfProduction", toggleable: true },
-  { header: "Supervisor Name", dataKey: "supervisorName", toggleable: true },
   { header: "Shift", dataKey: "shift", toggleable: true },
-  // Removed Notes column
+  { header: "Total Made", dataKey: "totalMade", toggleable: true },
+  // { header: "Cancel Qty", dataKey: "cancelQty", toggleable: true },
+  // { header: "Remarks", dataKey: "cancelRemarks", toggleable: true },
+  // { header: "Status", dataKey: "status", toggleable: true },
+  // { header: "Cancel Action", dataKey: "cancelAction", toggleable: false, alwaysVisible: true },
 ]
 
 export default function JobCardsPage() {
@@ -100,7 +111,9 @@ export default function JobCardsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [selectedJobCard, setSelectedJobCard] = useState<JobCard | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("pending")
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
@@ -110,15 +123,21 @@ export default function JobCardsPage() {
     dateOfProduction: new Date(),
     shift: "",
     notes: "",
+    totalMade: "",
+  })
+
+  const [cancelFormData, setCancelFormData] = useState({
+    cancelQty: "",
+    cancelRemarks: "",
   })
 
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({})
+  const [cancelFormErrors, setCancelFormErrors] = useState<Record<string, string | null>>({})
 
   const { fetchData: fetchProductionData } = useGoogleSheet(PRODUCTION_SHEET)
   const { fetchData: fetchJobCardsData } = useGoogleSheet(JOBCARDS_SHEET)
   const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET)
   const { fetchData: fetchCostingResponseData } = useGoogleSheet(COSTING_RESPONSE_SHEET)
-
 
   useEffect(() => {
     const initializeVisibility = (columnsMeta: any[]) => {
@@ -141,14 +160,11 @@ export default function JobCardsPage() {
         fetchProductionData(),
         fetchJobCardsData(),
         fetchMasterData(),
-        fetchCostingResponseData(), // ✅ ADD
+        fetchCostingResponseData(),
       ])
-
 
       const processGvizTable = (table: any, rowIndexOffset = 2) => {
         if (!table || !table.rows || table.rows.length < 1) return []
-        // --- FIX: The .slice(1) was removed to prevent skipping the first data row. ---
-        // The gviz format typically separates headers (in table.cols) from data rows.
         return table.rows
           .map((row: GvizRow, originalIndex: number) => {
             if (
@@ -159,7 +175,7 @@ export default function JobCardsPage() {
             }
             const rowData: any = { _rowIndex: originalIndex + rowIndexOffset }
             row.c.forEach((cell, cellIndex) => {
-              const colId = table.cols[cellIndex].id || `col${cellIndex}`
+              const colId = table.cols[cellIndex]?.id || String.fromCharCode(65 + cellIndex) // A, B, C, etc.
               const value = cell && cell.v !== undefined && cell.v !== null ? cell.v : ""
               rowData[colId] = value
             })
@@ -173,17 +189,15 @@ export default function JobCardsPage() {
       const allMasterData = processGvizTable(masterTable)
       const allCostingData = processGvizTable(costingTable)
 
-
+      // Process pending orders from Costing Response
       const filteredRows = allCostingData.filter((row) => {
-        const hasPlanned2 = row.BO !== null && String(row.BO).trim() !== ""
+        const hasPlanned2 = row.BO && String(row.BO).trim() !== ""
         const emptyActual3 = !row.BP || String(row.BP).trim() === ""
         return hasPlanned2 && emptyActual3
       })
 
       const processedOrders: Order[] = filteredRows.map((row) => {
         const deliveryOrderNo = String(row.C || "").trim()
-
-        // 🔁 find matching Production row
         const prodRow = allProductionData.find(
           (p) => String(p.B || "").trim() === deliveryOrderNo
         )
@@ -192,62 +206,58 @@ export default function JobCardsPage() {
           key: row._rowIndex,
           _rowIndex: row._rowIndex,
           deliveryOrderNo,
-
           firmName: prodRow ? String(prodRow.C || "") : "",
           partyName: prodRow ? String(prodRow.D || "") : "",
-
           productName: String(row.D || "").trim(),
-
-          orderQuantity: prodRow
-            ? Number(prodRow.F || 0)
-            : Number(row.F || 0),
-
-          expectedDeliveryDate:
-            prodRow && prodRow.G
-              ? format(parseGvizDate(prodRow.G), "dd/MM/yyyy")
-              : "",
-
+          orderQuantity: prodRow ? Number(prodRow.F || 0) : Number(row.F || 0),
+          expectedDeliveryDate: prodRow && prodRow.G ? format(parseGvizDate(prodRow.G), "dd/MM/yyyy") : "",
+          plannedDate: row.BO ? format(parseGvizDate(row.BO), "dd/MM/yy") : "",
           priority: prodRow ? String(prodRow.H || "") : "",
-
           note: "",
         }
       })
 
-
       setPendingOrders(processedOrders)
 
-      // Updated data mapping for history
+      // Process job cards history with correct column mappings
       const processedHistory: JobCard[] = allJobCardsData
         .map((row: any) => {
-          const prodDate = parseGvizDate(row.I) // Col I from JobCards
-          const createdDate = parseGvizDate(row.A)
-
-          // Find corresponding production data for cross-referencing
+          const prodDate = parseGvizDate(row.I) // Column I: Date of Production
+          const createdDate = parseGvizDate(row.A) // Column A: Timestamp
+          
+          // Find corresponding production data
           const productionRow = allProductionData.find(
-            (prodRow) => String(prodRow.B || "").trim() === String(row.E || "").trim(),
+            (prodRow) => String(prodRow.B || "").trim() === String(row.E || "").trim(), // Column E: DO No
           )
+
+          // Check if cancelled (has cancel quantity)
+          const cancelQty = Number(row.N || 0) // Column N: Cancel Qty
+          const isCancelled = cancelQty > 0
 
           return {
             key: row._rowIndex,
             _rowIndex: row._rowIndex,
-            jobCardNo: String(row.B || ""),
-            firmName: String(row.C || ""),
-            supervisorName: String(row.D || ""), // Col D from JobCards
-            deliveryOrderNo: String(row.E || ""),
-            partyName: String(row.F || ""),
-            productName: String(row.G || ""),
-            orderQuantity: Number(row.H || 0),
-            dateOfProduction: prodDate ? format(prodDate, "dd/MM/yyyy") : "", // Col I from JobCards
-            shift: String(row.J || ""), // Col J from JobCards
-            notes: String(row.O || ""), // Keep for data integrity but won't display
+            jobCardNo: String(row.B || ""),           // Column B: Job Card No
+            firmName: String(row.C || ""),             // Column C: Firm Name
+            supervisorName: String(row.D || ""),       // Column D: Supervisor Name
+            deliveryOrderNo: String(row.E || ""),      // Column E: DO No
+            partyName: String(row.F || ""),            // Column F: Party Name
+            productName: String(row.G || ""),          // Column G: Product Name
+            orderQuantity: Number(row.H || 0),         // Column H: Order Quantity
+            dateOfProduction: prodDate ? format(prodDate, "dd/MM/yyyy") : "", // Column I: Date
+            shift: String(row.J || ""),                // Column J: Shift
+            totalMade: Number(row.K || 0),             // Column K: Total Made
+            cancelQty: cancelQty,                       // Column N: Cancel Qty
+            cancelRemarks: String(row.O || ""),        // Column O: Remarks
+            notes: String(row.O || ""),                // Column O also used for notes
             createdAt: createdDate ? format(createdDate, "dd/MM/yyyy HH:mm:ss") : "",
-            totalMade: productionRow ? Number(productionRow.F || 0) : Number(row.K || 0), // Col F from Production
-            expectedDeliveryDate:
-              productionRow && productionRow.G ? format(parseGvizDate(productionRow.G), "dd/MM/yyyy") : "", // Col G from Production
-            priority: productionRow ? String(productionRow.H || "") : String(row.L || ""), // Col H from Production
+            expectedDeliveryDate: productionRow && productionRow.G 
+              ? format(parseGvizDate(productionRow.G), "dd/MM/yyyy") 
+              : "",
+            priority: productionRow ? String(productionRow.H || "") : "",
+            status: isCancelled ? 'cancelled' : 'active',
           }
         })
-        // --- CHANGE: This improved filter ensures only valid Job Cards are shown ---
         .filter((card: JobCard) => {
           if (!card.jobCardNo || !card.jobCardNo.startsWith("JC-")) return false
           const numberPart = card.jobCardNo.split("-")[1]
@@ -261,19 +271,21 @@ export default function JobCardsPage() {
 
       setHistoryJobCards(processedHistory)
 
+      // Load supervisors and shifts from master sheet
       const supervisorsList: string[] = [
         ...new Set(allMasterData.map((row: any) => String(row.B || "")).filter(Boolean)),
       ]
       const shiftsList: string[] = [...new Set(allMasterData.map((row: any) => String(row.C || "")).filter(Boolean))]
 
-      setSupervisors(supervisorsList)
-      setShifts(shiftsList)
+      setSupervisors(supervisorsList.length > 0 ? supervisorsList : ["Morning", "Evening", "Night"])
+      setShifts(shiftsList.length > 0 ? shiftsList : ["Day", "Evening", "Night"])
     } catch (err: any) {
+      console.error("Error loading data:", err)
       setError(`Failed to load data. Error: ${err.message}`)
     } finally {
       setLoading(false)
     }
-  }, [fetchProductionData, fetchJobCardsData, fetchMasterData])
+  }, [fetchProductionData, fetchJobCardsData, fetchMasterData, fetchCostingResponseData])
 
   useEffect(() => {
     loadAllData()
@@ -286,9 +298,20 @@ export default function JobCardsPage() {
       dateOfProduction: new Date(),
       shift: "",
       notes: "",
+      totalMade: order.orderQuantity.toString(),
     })
     setFormErrors({})
     setIsDialogOpen(true)
+  }
+
+  const handleOpenCancelDialog = (jobCard: JobCard) => {
+    setSelectedJobCard(jobCard)
+    setCancelFormData({
+      cancelQty: "",
+      cancelRemarks: "",
+    })
+    setCancelFormErrors({})
+    setIsCancelDialogOpen(true)
   }
 
   const handleFormChange = (field: string, value: any) => {
@@ -296,13 +319,52 @@ export default function JobCardsPage() {
     if (formErrors[field]) setFormErrors((prev) => ({ ...prev, [field]: null }))
   }
 
+  const handleCancelFormChange = (field: string, value: any) => {
+    setCancelFormData((prev) => ({ ...prev, [field]: value }))
+    if (cancelFormErrors[field]) setCancelFormErrors((prev) => ({ ...prev, [field]: null }))
+  }
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
     if (!formData.supervisorName) newErrors.supervisorName = "Supervisor name is required"
     if (!formData.dateOfProduction) newErrors.dateOfProduction = "Production date is required"
     if (!formData.shift) newErrors.shift = "Shift is required"
+    if (!formData.totalMade || Number(formData.totalMade) <= 0) {
+      newErrors.totalMade = "Valid total made quantity is required"
+    }
+    if (selectedOrder && Number(formData.totalMade) > selectedOrder.orderQuantity) {
+      newErrors.totalMade = "Total made cannot exceed order quantity"
+    }
     setFormErrors(newErrors)
     return Object.keys(newErrors).length === 0
+  }
+
+  const validateCancelForm = () => {
+    const newErrors: Record<string, string> = {}
+    if (!cancelFormData.cancelQty || Number(cancelFormData.cancelQty) <= 0) {
+      newErrors.cancelQty = "Valid cancel quantity is required"
+    }
+    if (selectedJobCard && Number(cancelFormData.cancelQty) > selectedJobCard.totalMade) {
+      newErrors.cancelQty = "Cancel quantity cannot exceed total made"
+    }
+    if (!cancelFormData.cancelRemarks?.trim()) {
+      newErrors.cancelRemarks = "Remarks are required for cancellation"
+    }
+    setCancelFormErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const getNextJobCardNumber = () => {
+    if (historyJobCards.length === 0) return 1
+    
+    const numbers = historyJobCards
+      .map(card => {
+        const match = card.jobCardNo.match(/JC-(\d+)/)
+        return match ? parseInt(match[1], 10) : 0
+      })
+      .filter(num => !isNaN(num))
+    
+    return numbers.length > 0 ? Math.max(...numbers) + 1 : 1
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -316,61 +378,106 @@ export default function JobCardsPage() {
     setIsSubmitting(true)
     try {
       const timestamp = format(new Date(), "dd/MM/yyyy HH:mm:ss")
-      const existingJobCard = historyJobCards.find((card) => card.deliveryOrderNo === selectedOrder.deliveryOrderNo)
-      const isUpdate = !!existingJobCard
+      const nextNumber = getNextJobCardNumber()
+      const jobCardNumber = `JC-${String(nextNumber).padStart(3, "0")}`
 
-      let nextJobCardNumber = 1
-      if (historyJobCards.length > 0) {
-        const jobCardNumbers = historyJobCards
-          .map((card) => {
-            const numPart = card.jobCardNo.split("-")[1]
-            return numPart ? Number.parseInt(numPart, 10) : 0
-          })
-          .filter((num) => !isNaN(num))
-        if (jobCardNumbers.length > 0) {
-          nextJobCardNumber = Math.max(...jobCardNumbers) + 1
-        }
-      }
+      // Prepare row data according to your actual column structure
+  const jobCardRowData = [
+  timestamp,                    
+  jobCardNumber,                
+  selectedOrder.firmName,       
+  formData.supervisorName,      
+  selectedOrder.deliveryOrderNo,
+  selectedOrder.partyName,      
+  selectedOrder.productName,    
+  selectedOrder.orderQuantity,  
+  format(formData.dateOfProduction, "dd/MM/yyyy"),
+  formData.shift,               
+  formData.notes || "",         // ✅ K (11) → Remarks moved here
+  formData.totalMade,           // ✅ L (12) → Total Made moved here
+  "",                           
+  "0",                          
+  "",                           
+]
 
-      const jobCardNumber = isUpdate ? existingJobCard.jobCardNo : `JC-${String(nextJobCardNumber).padStart(3, "0")}`
-
-      const jobCardRowData = [
-        timestamp,
-        jobCardNumber,
-        selectedOrder.firmName,
-        formData.supervisorName,
-        selectedOrder.deliveryOrderNo,
-        selectedOrder.partyName,
-        selectedOrder.productName,
-        selectedOrder.orderQuantity,
-        format(formData.dateOfProduction, "dd/MM/yyyy"),
-        formData.shift,
-        formData.notes || "",
-      ]
+      console.log("Submitting job card data:", jobCardRowData)
 
       const body = new URLSearchParams({
         sheetName: JOBCARDS_SHEET,
-        action: isUpdate ? "update" : "insert",
+        action: "insert",
         rowData: JSON.stringify(jobCardRowData),
       })
 
-      if (isUpdate && existingJobCard) {
-        body.append("rowIndex", existingJobCard._rowIndex.toString())
-      }
-
-      const res = await fetch(WEB_APP_URL, { method: "POST", body })
+      const res = await fetch(WEB_APP_URL, { 
+        method: "POST", 
+        body,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      })
+      
       const result = await res.json()
 
       if (!result.success) {
-        throw new Error(result.error || `Failed to ${isUpdate ? "update" : "create"} Job Card.`)
+        throw new Error(result.error || "Failed to create Job Card.")
       }
 
-      alert(`Job Card ${jobCardNumber} ${isUpdate ? "updated" : "created"} successfully!`)
+      alert(`Job Card ${jobCardNumber} created successfully!`)
       setIsDialogOpen(false)
       await loadAllData()
     } catch (err: any) {
+      console.error("Submit error:", err)
       setError(err.message)
-      alert(`Critical Error: ${err.message}`)
+      alert(`Error: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleCancelSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!validateCancelForm()) return
+    if (!selectedJobCard) return
+
+    setIsSubmitting(true)
+    try {
+      const timestamp = format(new Date(), "dd/MM/yyyy HH:mm:ss")
+      
+      // Prepare updates for the job card
+      const columnUpdates: Record<string, string> = {
+        "col14": cancelFormData.cancelQty, // N: Cancel Qty
+        "col15": cancelFormData.cancelRemarks, // O: Remarks
+        "col1": timestamp, // A: Update timestamp
+      }
+
+      const body = new URLSearchParams({
+        sheetName: JOBCARDS_SHEET,
+        action: "updateCells",
+        rowIndex: String(selectedJobCard._rowIndex),
+        cellUpdates: JSON.stringify(columnUpdates),
+      })
+
+      const res = await fetch(WEB_APP_URL, {
+        method: "POST",
+        body: body,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      })
+
+      const result = await res.json()
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to cancel job card.")
+      }
+
+      alert(`Job Card ${selectedJobCard.jobCardNo} cancelled successfully!`)
+      setIsCancelDialogOpen(false)
+      await loadAllData()
+    } catch (err: any) {
+      console.error("Cancel error:", err)
+      setError(err.message)
+      alert(`Error: ${err.message}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -403,7 +510,8 @@ export default function JobCardsPage() {
   if (loading)
     return (
       <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-purple-600" /> <p className="ml-4 text-lg">Loading Data...</p>
+        <Loader2 className="h-12 w-12 animate-spin text-purple-600" /> 
+        <p className="ml-4 text-lg">Loading Data...</p>
       </div>
     )
 
@@ -427,7 +535,9 @@ export default function JobCardsPage() {
             <FileCheck className="h-6 w-6 text-purple-600" />
             Job Card Management
           </CardTitle>
-          <CardDescription className="text-gray-700">Create and manage job cards for production orders</CardDescription>
+          <CardDescription className="text-gray-700">
+            Create and manage job cards for production orders 
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6 lg:p-8">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
@@ -532,8 +642,9 @@ export default function JobCardsPage() {
                               {visiblePendingOrdersColumns.map((column) => (
                                 <TableCell
                                   key={column.dataKey}
-                                  className={`whitespace-nowrap text-xs ${column.dataKey === "deliveryOrderNo" ? "font-medium text-primary" : "text-gray-700"
-                                    }`}
+                                  className={`whitespace-nowrap text-xs ${
+                                    column.dataKey === "deliveryOrderNo" ? "font-medium text-primary" : "text-gray-700"
+                                  }`}
                                 >
                                   {column.dataKey === "actionColumn" ? (
                                     <Button
@@ -545,7 +656,7 @@ export default function JobCardsPage() {
                                       Create Job Card
                                     </Button>
                                   ) : (
-                                    order[column.dataKey as keyof Order] || "-"
+                                    order[column.dataKey as keyof Order]?.toString() || "-"
                                   )}
                                 </TableCell>
                               ))}
@@ -645,10 +756,29 @@ export default function JobCardsPage() {
                               {visibleHistoryJobCardsColumns.map((column) => (
                                 <TableCell
                                   key={column.dataKey}
-                                  className={`whitespace-nowrap text-xs ${column.dataKey === "jobCardNo" ? "font-medium text-primary" : "text-gray-700"
-                                    }`}
+                                  className={`whitespace-nowrap text-xs ${
+                                    column.dataKey === "jobCardNo" ? "font-medium text-primary" : "text-gray-700"
+                                  }`}
                                 >
-                                  {card[column.dataKey as keyof JobCard] || "-"}
+                                  {column.dataKey === "status" ? (
+                                    <Badge variant={card.status === 'cancelled' ? 'destructive' : 'default'}>
+                                      {card.status}
+                                    </Badge>
+                                  ) : column.dataKey === "cancelAction" ? (
+                                    card.status === 'active' && (
+                                      <Button
+                                        onClick={() => handleOpenCancelDialog(card)}
+                                        size="sm"
+                                        variant="destructive"
+                                        className="text-xs h-7 px-2 py-1"
+                                      >
+                                        <XCircle className="h-3 w-3 mr-1" />
+                                        Cancel
+                                      </Button>
+                                    )
+                                  ) : (
+                                    card[column.dataKey as keyof JobCard]?.toString() || "-"
+                                  )}
                                 </TableCell>
                               ))}
                             </TableRow>
@@ -664,11 +794,14 @@ export default function JobCardsPage() {
         </CardContent>
       </Card>
 
+      {/* Create Job Card Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Job Card for DO: {selectedOrder?.deliveryOrderNo}</DialogTitle>
-            <DialogDescription>Fill out the production details below. Fields with * are required.</DialogDescription>
+            <DialogDescription>
+              Fill out the production details below. Fields with * are required.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-6 py-4">
@@ -691,10 +824,13 @@ export default function JobCardsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                 <div>
                   <Label htmlFor="supervisor">Supervisor Name *</Label>
-                  <Select value={formData.supervisorName} onValueChange={(v) => handleFormChange("supervisorName", v)}>
+                  <Select 
+                    value={formData.supervisorName} 
+                    onValueChange={(v) => handleFormChange("supervisorName", v)}
+                  >
                     <SelectTrigger id="supervisor" className={formErrors.supervisorName ? "border-red-500" : ""}>
                       <SelectValue placeholder="Select Supervisor..." />
                     </SelectTrigger>
@@ -762,15 +898,33 @@ export default function JobCardsPage() {
                   </Select>
                   {formErrors.shift && <p className="text-xs text-red-600 mt-1">{formErrors.shift}</p>}
                 </div>
+
+                <div>
+                  <Label htmlFor="totalMade">Total Made *</Label>
+                  <Input
+                    id="totalMade"
+                    type="number"
+                    min="0"
+                    max={selectedOrder?.orderQuantity}
+                    value={formData.totalMade}
+                    onChange={(e) => handleFormChange("totalMade", e.target.value)}
+                    className={formErrors.totalMade ? "border-red-500" : ""}
+                    placeholder="Enter quantity produced"
+                  />
+                  {formErrors.totalMade && (
+                    <p className="text-xs text-red-600 mt-1">{formErrors.totalMade}</p>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="notes">Notes</Label>
+                <Label htmlFor="notes">Notes / Remarks</Label>
                 <Textarea
                   id="notes"
                   value={formData.notes}
                   onChange={(e) => handleFormChange("notes", e.target.value)}
                   placeholder="Enter any production notes..."
+                  rows={3}
                 />
               </div>
             </div>
@@ -782,6 +936,66 @@ export default function JobCardsPage() {
               <Button type="submit" disabled={isSubmitting} className="bg-purple-600 text-white hover:bg-purple-700">
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Create Job Card
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Job Card Dialog */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel Job Card: {selectedJobCard?.jobCardNo}</DialogTitle>
+            <DialogDescription>
+              Enter the quantity to cancel and provide remarks.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCancelSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="cancelQty">Cancel Quantity *</Label>
+              <Input
+                id="cancelQty"
+                type="number"
+                min="0"
+                max={selectedJobCard?.totalMade}
+                value={cancelFormData.cancelQty}
+                onChange={(e) => handleCancelFormChange("cancelQty", e.target.value)}
+                className={cancelFormErrors.cancelQty ? "border-red-500" : ""}
+                placeholder="Enter quantity to cancel"
+              />
+              {cancelFormErrors.cancelQty && (
+                <p className="text-xs text-red-600">{cancelFormErrors.cancelQty}</p>
+              )}
+              {selectedJobCard && (
+                <p className="text-xs text-gray-500">
+                  Max cancel quantity: {selectedJobCard.totalMade}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cancelRemarks">Remarks *</Label>
+              <Textarea
+                id="cancelRemarks"
+                value={cancelFormData.cancelRemarks}
+                onChange={(e) => handleCancelFormChange("cancelRemarks", e.target.value)}
+                className={cancelFormErrors.cancelRemarks ? "border-red-500" : ""}
+                placeholder="Enter reason for cancellation"
+                rows={3}
+              />
+              {cancelFormErrors.cancelRemarks && (
+                <p className="text-xs text-red-600">{cancelFormErrors.cancelRemarks}</p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsCancelDialogOpen(false)} disabled={isSubmitting}>
+                No, Keep it
+              </Button>
+              <Button type="submit" variant="destructive" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Yes, Cancel
               </Button>
             </div>
           </form>

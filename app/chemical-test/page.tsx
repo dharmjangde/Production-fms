@@ -35,6 +35,7 @@ interface PendingChemicalTestItem {
   jobCardNo: string
   deliveryOrderNo: string
   productName: string
+  plannedDate: string
   quantity: number
   expectedDeliveryDate: string
   priority: string
@@ -111,10 +112,12 @@ const CHEMICAL_TEST_COLUMNS = {
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
   { header: "Priority", dataKey: "priority", toggleable: true },
+  { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
   { header: "Date of Production", dataKey: "dateOfProduction", toggleable: true },
   { header: "Shift", dataKey: "shift", toggleable: true },
   { header: "Raw Materials", dataKey: "rawMaterials", toggleable: true },
@@ -124,6 +127,7 @@ const PENDING_COLUMNS_META = [
 ]
 
 const HISTORY_COLUMNS_META = [
+  { header: "Completed At", dataKey: "chemicalTestCompletedAt", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
@@ -166,7 +170,19 @@ export default function ChemicalTestPage() {
   const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET)
   const { fetchData: fetchProductionData } = useGoogleSheet(PRODUCTION_SHEET)
   const { fetchData: fetchActualProductionData } = useGoogleSheet(ACTUAL_PRODUCTION_SHEET)
+const safeFormatDate = (value: any, pattern = "dd/MM/yyyy") => {
+  if (!value) return ""
 
+  try {
+    const parsed = parseGvizDate(value)
+
+    if (!parsed || isNaN(parsed.getTime())) return ""
+
+    return format(parsed, pattern)
+  } catch (err) {
+    return ""
+  }
+}
   const processGvizTable = (table) => {
     if (!table || !table.rows || table.rows.length === 0) {
       return []
@@ -310,9 +326,11 @@ export default function ChemicalTestPage() {
             deliveryOrderNo: deliveryOrderNo,
             productName: String(row.G || ""),
             quantity: Number(row.H || 0),
-            expectedDeliveryDate: productionRow?.G ? format(parseGvizDate(productionRow.G), "dd/MM/yyyy") : "",
+expectedDeliveryDate: safeFormatDate(productionRow?.G),
             priority: String(productionRow?.H || ""),
-            dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
+                     plannedDate: safeFormatDate(productionRow?.F),
+
+dateOfProduction: safeFormatDate(row.I),
             shift: String(row.J || ""),
             rawMaterials: productionData ? productionData.rawMaterials : [],
             machineHours: productionData ? productionData.machineHours : "-",
@@ -343,8 +361,10 @@ export default function ChemicalTestPage() {
             ironPercentage: String(row.AU || ""),
             silicaPercentage: String(row.AV || ""),
             calciumPercentage: String(row.AW || ""),
-            chemicalTestCompletedAt: completedAt ? format(completedAt, "dd/MM/yy HH:mm") : String(row.AQ),
-          }
+chemicalTestCompletedAt:
+  completedAt && !isNaN(completedAt.getTime())
+    ? format(completedAt, "dd/MM/yyyy HH:mm:ss")
+    : "",          }
         })
         .sort((a, b) => new Date(b.chemicalTestCompletedAt).getTime() - new Date(a.chemicalTestCompletedAt).getTime())
 

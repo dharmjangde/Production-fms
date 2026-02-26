@@ -39,6 +39,7 @@ interface ProductionItem {
   productName: string
   quantity: number
   expectedDeliveryDate: string
+  plannedDate: string
   priority: string
   dateOfProduction: string
   supervisorName: string
@@ -121,6 +122,7 @@ const PENDING_COLUMNS_META = [
   { header: "Quantity", dataKey: "quantity", toggleable: true },
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
   { header: "Priority", dataKey: "priority", toggleable: true },
+  { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
   { header: "Date of Production", dataKey: "dateOfProduction", toggleable: true },
   { header: "Supervisor Name", dataKey: "supervisorName", toggleable: true },
   { header: "Shift", dataKey: "shift", toggleable: true },
@@ -130,6 +132,7 @@ const PENDING_COLUMNS_META = [
 ]
 
 const HISTORY_COLUMNS_META = [
+  { header: "Completed At", dataKey: "test2CompletedAt", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
@@ -324,6 +327,9 @@ export default function LabTesting2Page() {
             expectedDeliveryDate: productionRow?.G ? format(parseGvizDate(productionRow.G), "dd/MM/yyyy") : "",
             priority: String(productionRow?.H || ""),
             dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
+            plannedDate: row.AE
+                ? format(parseGvizDate(row.AE), "dd/MM/yyyy")
+                : "",
             supervisorName: String(row.D || ""),
             shift: String(row.J || ""),
             rawMaterials: productionData ? productionData.rawMaterials : [],
