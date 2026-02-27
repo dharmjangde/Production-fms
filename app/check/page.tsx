@@ -583,11 +583,10 @@ function DevshreeViewDialog({ item, open, onClose }: { item: DevshreePendingItem
           <div>
             <SectionHeader title="Cycle Timing" color="gray" />
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-3 px-1">
-              <DetailField icon={Clock} label="Time Delay 1" value={item.timeDelay1} />
-              <DetailField icon={FileText} label="Remarks 1" value={item.remarks} />
+              {/* <DetailField icon={Clock} label="Time Delay 1" value={item.timeDelay1} /> */}
+              {/* <DetailField icon={FileText} label="Remarks 1" value={item.remarks} /> */}
               <DetailField icon={Calendar} label="Planned 2" value={item.planned2} />
               <DetailField icon={Calendar} label="Actual 2" value={item.actual2} />
-              <DetailField icon={Clock} label="Time Delay 2" value={item.timeDelay2} />
               <DetailField icon={FileText} label="Remarks 2" value={item.remarks2} />
             </div>
           </div>
@@ -767,26 +766,26 @@ export default function CheckPage() {
       ])
 
       const processGvizTable = (table: any) => {
-  if (!table || !table.rows || table.rows.length === 0) return []
+        if (!table || !table.rows || table.rows.length === 0) return []
 
-  const startIndex = table.rows.findIndex((r: any) =>
-    r.c?.[1]?.v && r.c?.[1]?.v !== "Job Card No."
-  )
+        const startIndex = table.rows.findIndex((r: any) =>
+          r.c?.[1]?.v && r.c?.[1]?.v !== "Job Card No."
+        )
 
-  return table.rows.slice(startIndex).map((row: GvizRow, index: number) => {
-    if (!row.c || !row.c.some((cell) => cell && cell.v !== null)) return null
+        return table.rows.slice(startIndex).map((row: GvizRow, index: number) => {
+          if (!row.c || !row.c.some((cell) => cell && cell.v !== null)) return null
 
-    const rowData: { [key: string]: any } = {}
-    row.c.forEach((cell, cellIndex) => {
-      rowData[`col${cellIndex}`] = cell ? cell.v : null
-    })
+          const rowData: { [key: string]: any } = {}
+          row.c.forEach((cell, cellIndex) => {
+            rowData[`col${cellIndex}`] = cell ? cell.v : null
+          })
 
-    return {
-      ...rowData,
-      __sheetRow: index + startIndex + 1, // actual sheet row
-    }
-  }).filter(Boolean)
-}
+          return {
+            ...rowData,
+            __sheetRow: index + startIndex + 1, // actual sheet row
+          }
+        }).filter(Boolean)
+      }
 
       const actualProductionRows = processGvizTable(actualProductionTable)
       const masterDataRows = processGvizTable(masterTable)
