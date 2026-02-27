@@ -170,19 +170,47 @@ export default function ChemicalTestPage() {
   const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET)
   const { fetchData: fetchProductionData } = useGoogleSheet(PRODUCTION_SHEET)
   const { fetchData: fetchActualProductionData } = useGoogleSheet(ACTUAL_PRODUCTION_SHEET)
-const safeFormatDate = (value: any, pattern = "dd/MM/yyyy") => {
-  if (!value) return ""
+  const safeFormatDate = (value: any, pattern = "dd/MM/yyyy") => {
+    if (!value && value !== 0) return ""
 
-  try {
-    const parsed = parseGvizDate(value)
+    try {
+      // Case 1: already a JS Date object
+      if (value instanceof Date) {
+        return !isNaN(value.getTime()) ? format(value, pattern) : ""
+      }
 
-    if (!parsed || isNaN(parsed.getTime())) return ""
+      // Case 2: gviz "Date(year,month,day,...)" string
+      if (typeof value === "string" && value.startsWith("Date(")) {
+        const parsed = parseGvizDate(value)
+        return parsed && !isNaN(parsed.getTime()) ? format(parsed, pattern) : ""
+      }
 
-    return format(parsed, pattern)
-  } catch (err) {
-    return ""
+      // Case 3: numeric timestamp (Excel/Sheets serial date number)
+      if (typeof value === "number") {
+        // Google Sheets serial date: days since Dec 30 1899
+        const msPerDay = 86400000
+        const excelEpoch = new Date(1899, 11, 30).getTime()
+        const d = new Date(excelEpoch + value * msPerDay)
+        return !isNaN(d.getTime()) ? format(d, pattern) : ""
+      }
+
+      // Case 4: plain date/datetime string (e.g. "09/07/2025" or ISO)
+      if (typeof value === "string" && value.trim() !== "") {
+        const d = new Date(value)
+        if (!isNaN(d.getTime())) return format(d, pattern)
+        // Try dd/MM/yyyy format
+        const parts = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+        if (parts) {
+          const d2 = new Date(Number(parts[3]), Number(parts[2]) - 1, Number(parts[1]))
+          return !isNaN(d2.getTime()) ? format(d2, pattern) : ""
+        }
+      }
+
+      return ""
+    } catch (err) {
+      return ""
+    }
   }
-}
   const processGvizTable = (table) => {
     if (!table || !table.rows || table.rows.length === 0) {
       return []
@@ -326,11 +354,11 @@ const safeFormatDate = (value: any, pattern = "dd/MM/yyyy") => {
             deliveryOrderNo: deliveryOrderNo,
             productName: String(row.G || ""),
             quantity: Number(row.H || 0),
-expectedDeliveryDate: safeFormatDate(productionRow?.G),
+            expectedDeliveryDate: safeFormatDate(productionRow?.G),
             priority: String(productionRow?.H || ""),
-                     plannedDate: safeFormatDate(productionRow?.F),
+            plannedDate: safeFormatDate(productionRow?.F),
 
-dateOfProduction: safeFormatDate(row.I),
+            dateOfProduction: safeFormatDate(row.I),
             shift: String(row.J || ""),
             rawMaterials: productionData ? productionData.rawMaterials : [],
             machineHours: productionData ? productionData.machineHours : "-",
@@ -361,10 +389,11 @@ dateOfProduction: safeFormatDate(row.I),
             ironPercentage: String(row.AU || ""),
             silicaPercentage: String(row.AV || ""),
             calciumPercentage: String(row.AW || ""),
-chemicalTestCompletedAt:
-  completedAt && !isNaN(completedAt.getTime())
-    ? format(completedAt, "dd/MM/yyyy HH:mm:ss")
-    : "",          }
+            chemicalTestCompletedAt:
+              completedAt && !isNaN(completedAt.getTime())
+                ? format(completedAt, "dd/MM/yyyy HH:mm:ss")
+                : "",
+          }
         })
         .sort((a, b) => new Date(b.chemicalTestCompletedAt).getTime() - new Date(a.chemicalTestCompletedAt).getTime())
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, DollarSign, History, Settings } from "lucide-react"
+import { Loader2, AlertTriangle, DollarSign, History, Settings, Package, Building, User, Calendar, Clock, Hash, FileText, CheckCircle } from "lucide-react"
 import { format } from "date-fns"
 // Shadcn UI components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Separator } from "@/components/ui/separator"
 
 // --- Configuration ---
 const WEB_APP_URL =
@@ -30,6 +31,57 @@ const COSTING_COLUMNS = {
 }
 
 // --- Type Definitions ---
+interface RawMaterial {
+  name: string
+  quantity: string | number
+}
+
+interface CompleteProductionDetails {
+  // Basic Info
+  timestamp: string
+  jobCardNo: string
+  firmName: string
+  dateOfProduction: string
+  nameOfSupervisor: string
+  productName: string
+  quantityOfFG: number
+  serialNumber: string
+  
+  // Raw Materials
+  rawMaterials: RawMaterial[]
+  
+  // Additional Fields
+  machineRunningHour: string
+  remarks1: string
+  ppBagUsed: string
+  ppBagToBeUsed: string
+  partyName: string
+  ppBagSmall: string
+  costingAmount: number
+  colorCondition: string
+  orderNo: string
+  planned1: string
+  actual1: string
+  status: string
+  actualQty1: string
+  planned2: string
+  actual2: string
+  timeDelay2: string
+  remarks: string
+  planned3: string
+  actual3: string
+  costingAmount2: string
+  planned4: string
+  actual4: string
+  remarks1_2: string
+  planned5: string
+  actual5: string
+  remarks2: string
+  planned6: string
+  actual6: string
+  remarks3: string
+}
+
 interface PendingCostingItem {
   jobCardNo: string
   deliveryOrderNo: string
@@ -37,6 +89,7 @@ interface PendingCostingItem {
   firmName: string
   partyName: string
   planned3: string
+  completeDetails?: CompleteProductionDetails
 }
 
 interface HistoryCostingItem {
@@ -47,6 +100,7 @@ interface HistoryCostingItem {
   partyName: string
   costingAmount: number
   costingDate: string
+  completeDetails?: CompleteProductionDetails
 }
 
 interface GvizRow {
@@ -82,6 +136,26 @@ function parseGvizDate(gvizDateString: string | null | undefined): Date | null {
   const [year, month, day, hours = 0, minutes = 0, seconds = 0] = numbers.map(Number)
   const date = new Date(year, month, day, hours, minutes, seconds)
   return isNaN(date.getTime()) ? null : date
+}
+
+// Helper function to format date values in dd/mm/yy format
+function formatDateValue(value: any): string {
+  if (!value) return "N/A"
+  if (typeof value === 'string' && value.startsWith('Date(')) {
+    const parsed = parseGvizDate(value)
+    return parsed ? format(parsed, "dd/MM/yy") : value
+  }
+  return String(value)
+}
+
+// Helper function to format datetime values in dd/mm/yy HH:mm format
+function formatDateTimeValue(value: any): string {
+  if (!value) return "N/A"
+  if (typeof value === 'string' && value.startsWith('Date(')) {
+    const parsed = parseGvizDate(value)
+    return parsed ? format(parsed, "dd/MM/yy HH:mm") : value
+  }
+  return String(value)
 }
 
 const initialFormState = {
@@ -132,6 +206,71 @@ export default function CostingPage() {
     }
   }, [])
 
+  const processCompleteDetails = (row: any): CompleteProductionDetails => {
+    // Extract raw materials (20 pairs from columns 8-47)
+    const rawMaterials = []
+    for (let i = 0; i < 20; i++) {
+      const nameCol = 8 + (i * 2)
+      const qtyCol = 9 + (i * 2)
+      
+      const rawMaterialName = row[`col${nameCol}`]
+      const rawMaterialQty = row[`col${qtyCol}`]
+      
+      if (rawMaterialName && String(rawMaterialName).trim() !== "") {
+        rawMaterials.push({
+          name: String(rawMaterialName || ""),
+          quantity: rawMaterialQty || 0
+        })
+      }
+    }
+
+    return {
+      // Basic Info
+      timestamp: formatDateTimeValue(row.col0),
+      jobCardNo: String(row.col1 || ""),
+      firmName: String(row.col2 || ""),
+      dateOfProduction: formatDateValue(row.col3),
+      nameOfSupervisor: String(row.col4 || ""),
+      productName: String(row.col5 || ""),
+      quantityOfFG: Number(row.col6 || 0),
+      serialNumber: String(row.col7 || ""),
+      
+      // Raw Materials
+      rawMaterials,
+      
+      // Additional Fields
+      machineRunningHour: String(row.col48 || ""),
+      remarks1: String(row.col49 || ""),
+      ppBagUsed: String(row.col50 || ""),
+      ppBagToBeUsed: String(row.col51 || ""),
+      partyName: String(row.col52 || ""),
+      ppBagSmall: String(row.col53 || ""),
+      costingAmount: Number(row.col54 || 0),
+      colorCondition: String(row.col55 || ""),
+      orderNo: String(row.col56 || ""),
+      planned1: formatDateValue(row.col57),
+      actual1: formatDateTimeValue(row.col58),
+      status: String(row.col59 || ""),
+      actualQty1: String(row.col60 || ""),
+      planned2: formatDateValue(row.col61),
+      actual2: formatDateTimeValue(row.col62),
+      timeDelay2: String(row.col63 || ""),
+      remarks: String(row.col64 || ""),
+      planned3: formatDateValue(row.col65),
+      actual3: formatDateTimeValue(row.col66),
+      costingAmount2: String(row.col67 || ""),
+      planned4: formatDateValue(row.col68),
+      actual4: formatDateTimeValue(row.col69),
+      remarks1_2: String(row.col70 || ""),
+      planned5: formatDateValue(row.col71),
+      actual5: formatDateTimeValue(row.col72),
+      remarks2: String(row.col73 || ""),
+      planned6: formatDateValue(row.col74),
+      actual6: formatDateTimeValue(row.col75),
+      remarks3: String(row.col76 || ""),
+    }
+  }
+
   const loadAllData = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -160,10 +299,7 @@ export default function CostingPage() {
       const actualProductionRows = processGvizTable(actualProductionTable)
       const jobCardsRows = processGvizTable(jobCardsTable)
 
-      // Log to see actual data structure
-      console.log('Sample row:', actualProductionRows[0]);
-
-      // --- Pending Logic: Planned3 (BO/col66) is NOT null AND Actual3 (BP/col67) IS null ---
+      // --- Pending Logic: Planned3 (col66) is NOT null AND Actual3 (col67) IS null ---
       const pendingData: PendingCostingItem[] = actualProductionRows
         .filter(
           (row: { [key: string]: any }) => {
@@ -182,16 +318,6 @@ export default function CostingPage() {
               String(row.col67).trim() === "" || 
               String(row.col67).trim() === "null"
             );
-
-            // Log for debugging
-            if (hasPlanned3) {
-              console.log('Found Planned3:', {
-                jobCardNo: row.col1,
-                planned3: row.col66,
-                actual3: row.col67,
-                showInPending: hasPlanned3 && isActual3Empty
-              });
-            }
 
             return (
               // MUST have Job Card No
@@ -218,12 +344,12 @@ export default function CostingPage() {
             productName: String(row.col5 || ""),
             firmName: String(row.col2 || ""),
             partyName: String(jobCard?.col5 || ""),
-            planned3: String(row.col66 || ""),
+            planned3: formatDateValue(row.col66),
+            completeDetails: processCompleteDetails(row),
           };
         });
 
       setPendingCosting(pendingData);
-      console.log('Pending count:', pendingData.length);
 
       // --- History Logic: Both Planned3 (col66) and Actual3 (col67) are NOT NULL ---
       const historyData: HistoryCostingItem[] = actualProductionRows
@@ -262,12 +388,12 @@ export default function CostingPage() {
             partyName: String(jobCard?.col5 || ""),
             costingAmount: costingAmount,
             costingDate: costingDate ? format(costingDate, "dd/MM/yy HH:mm") : String(row.col67 || ""),
+            completeDetails: processCompleteDetails(row),
           };
         })
         .sort((a, b) => new Date(b.costingDate).getTime() - new Date(a.costingDate).getTime());
 
       setHistoryCosting(historyData);
-      console.log('History count:', historyData.length);
 
     } catch (err: any) {
       setError(`Failed to load data: ${err.message}`)
@@ -589,66 +715,278 @@ export default function CostingPage() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Costing for JC: {selectedCosting?.jobCardNo}</DialogTitle>
-            <DialogDescription>Enter the costing amount for this production item.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-xl border-b pb-2">
+              <Package className="h-5 w-5 text-green-600" />
+              Complete Production Details - Job Card: {selectedCosting?.jobCardNo}
+            </DialogTitle>
+            <DialogDescription>
+              All information from Actual Production sheet for this job card
+            </DialogDescription>
           </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleSaveCosting()
-            }}
-            className="space-y-4 pt-4"
-          >
-            <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/50">
-              <div>
-                <Label className="text-xs">DO No.</Label>
-                <p className="text-sm font-semibold">{selectedCosting?.deliveryOrderNo}</p>
+          
+          {selectedCosting?.completeDetails && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleSaveCosting()
+              }}
+              className="space-y-6 pt-2"
+            >
+              {/* Section 1: Basic Information */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-green-700 bg-green-50 p-2 rounded">
+                  <Building className="h-4 w-4" /> Basic Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Hash className="h-3 w-3" /> Job Card Number
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.jobCardNo || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Building className="h-3 w-3" /> Firm Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.firmName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Calendar className="h-3 w-3" /> Date of Production
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.dateOfProduction || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <User className="h-3 w-3" /> Name of Supervisor
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.nameOfSupervisor || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Package className="h-3 w-3" /> Product Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.productName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Package className="h-3 w-3" /> Quantity of FG
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.quantityOfFG || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Hash className="h-3 w-3" /> Serial Number
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.serialNumber || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> Machine Running Hour
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.machineRunningHour || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <FileText className="h-3 w-3" /> Delivery Order No.
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.deliveryOrderNo || "N/A"}</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs">Product Name</Label>
-                <p className="text-sm font-semibold">{selectedCosting?.productName}</p>
-              </div>
-              <div>
-                <Label className="text-xs">Firm Name</Label>
-                <p className="text-sm font-semibold">{selectedCosting?.firmName}</p>
-              </div>
-              <div>
-                <Label className="text-xs">Party Name</Label>
-                <p className="text-sm font-semibold">{selectedCosting?.partyName}</p>
-              </div>
-              <div className="col-span-2">
-                <Label className="text-xs">Planned 3 Value</Label>
-                <p className="text-sm font-semibold text-green-600">{selectedCosting?.planned3}</p>
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="costingAmount">Costing Amount (₹) *</Label>
-              <Input
-                id="costingAmount"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="Enter costing amount"
-                value={formData.costingAmount}
-                onChange={(e) => handleFormChange("costingAmount", e.target.value)}
-                className={formErrors.costingAmount ? "border-red-500" : ""}
-              />
-              {formErrors.costingAmount && <p className="text-xs text-red-600 mt-1">{formErrors.costingAmount}</p>}
-            </div>
+              {/* Section 2: Raw Materials */}
+              {selectedCosting.completeDetails.rawMaterials.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-md font-semibold flex items-center gap-2 text-blue-700 bg-blue-50 p-2 rounded">
+                    <Package className="h-4 w-4" /> Raw Materials Used
+                  </h3>
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-blue-50">
+                        <TableRow>
+                          <TableHead className="w-12">#</TableHead>
+                          <TableHead>Raw Material Name</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedCosting.completeDetails.rawMaterials.map((material, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{idx + 1}</TableCell>
+                            <TableCell>{material.name}</TableCell>
+                            <TableCell className="text-right">{material.quantity}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
 
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-green-600 text-white hover:bg-green-700">
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save Costing
-              </Button>
-            </div>
-          </form>
+              {/* Section 3: Additional Production Details */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-orange-700 bg-orange-50 p-2 rounded">
+                  <FileText className="h-4 w-4" /> Additional Production Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Party Name</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.partyName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Order No.</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.orderNo || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Color Condition</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.colorCondition || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">PP Bag Used</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.ppBagUsed || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">PP Bag To Be Used</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.ppBagToBeUsed || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">PP Bag (Small)</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.ppBagSmall || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Remarks 1</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.remarks1 || "N/A"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Planning and Actual Data */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-indigo-700 bg-indigo-50 p-2 rounded">
+                  <CheckCircle className="h-4 w-4" /> Planning & Actual Data
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Planned 1</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.planned1 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Actual 1</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.actual1 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Status</Label>
+                    <p className="text-sm"><Badge variant="outline">{selectedCosting.completeDetails.status || "N/A"}</Badge></p>
+                  </div>
+                  {/* <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Actual Qty 1</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.actualQty1 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Planned 2</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.planned2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Actual 2</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.actual2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Time Delay 2</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.timeDelay2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Remarks</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.remarks || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Planned 3</Label>
+                    <p className="text-sm font-medium text-green-600">{selectedCosting.completeDetails.planned3 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Actual 3</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.actual3 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Costing Amount 2</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.costingAmount2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Planned 4</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.planned4 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Actual 4</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.actual4 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Remarks 1.2</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.remarks1_2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Planned 5</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.planned5 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Actual 5</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.actual5 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Remarks 2</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.remarks2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Planned 6</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.planned6 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Actual 6</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.actual6 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-600">Remarks 3</Label>
+                    <p className="text-sm">{selectedCosting.completeDetails.remarks3 || "N/A"}</p>
+                  </div> */}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Costing Amount Input Section */}
+              <div className="space-y-4">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-green-700">
+                  <DollarSign className="h-4 w-4" /> Costing Amount
+                </h3>
+                <div className="space-y-2">
+                  <Label htmlFor="costingAmount">Costing Amount (₹) *</Label>
+                  <Input
+                    id="costingAmount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Enter costing amount"
+                    value={formData.costingAmount}
+                    onChange={(e) => handleFormChange("costingAmount", e.target.value)}
+                    className={formErrors.costingAmount ? "border-red-500" : ""}
+                  />
+                  {formErrors.costingAmount && <p className="text-xs text-red-600 mt-1">{formErrors.costingAmount}</p>}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-green-600 hover:bg-green-700">
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Costing Amount
+                </Button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>

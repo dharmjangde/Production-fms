@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, TestTube2, History, Settings } from "lucide-react"
+import { Loader2, AlertTriangle, TestTube2, History, Settings, Eye } from "lucide-react"
 import { format } from "date-fns"
 import { useGoogleSheet, parseGvizDate } from "@/lib/g-sheets"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -63,17 +63,26 @@ interface CostingItem {
   iron: string
   bd: string
   ap: string
+  // RM1–RM20
+  rm1: string; rm2: string; rm3: string; rm4: string; rm5: string
+  rm6: string; rm7: string; rm8: string; rm9: string; rm10: string
+  rm11: string; rm12: string; rm13: string; rm14: string; rm15: string
+  rm16: string; rm17: string; rm18: string; rm19: string; rm20: string
+  // QTY1–QTY20
+  qty1: string; qty2: string; qty3: string; qty4: string; qty5: string
+  qty6: string; qty7: string; qty8: string; qty9: string; qty10: string
+  qty11: string; qty12: string; qty13: string; qty14: string; qty15: string
+  qty16: string; qty17: string; qty18: string; qty19: string; qty20: string
   planned1: string
   actual2: string
   timeDelay1: string
   wc: string
   ist: string
-  fst: string
   status: string
   remarks: string
 }
 
-interface HistoryItem extends CostingItem {}
+interface HistoryItem extends CostingItem { }
 
 // Column Definitions for Pending Tests
 const PENDING_COLUMNS_META = [
@@ -81,7 +90,7 @@ const PENDING_COLUMNS_META = [
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
-  { header: "Planned Date", dataKey: "planned1", toggleable: true }, // 👈 ADD THIS
+  { header: "Planned Date", dataKey: "planned1", toggleable: true },
   { header: "VARIABLE COST", dataKey: "variableCost", toggleable: true },
   { header: "Manufacturing Cost", dataKey: "manufacturingCost", toggleable: true },
   { header: "Interest (days)", dataKey: "interestDays", toggleable: true },
@@ -92,13 +101,13 @@ const PENDING_COLUMNS_META = [
 
 // Column Definitions for History
 const HISTORY_COLUMNS_META = [
+  { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Timestamp", dataKey: "actual2", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Alumina Percentage %", dataKey: "wc", toggleable: true },
   { header: "Iron Percentage %", dataKey: "ist", toggleable: true },
-  // { header: "FST", dataKey: "fst", toggleable: true },
   { header: "Remarks", dataKey: "remarks", toggleable: true },
 ]
 
@@ -124,29 +133,28 @@ export default function LabTestingPage() {
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
 
+  // State for the costing details view popup
+  const [viewingCostingItem, setViewingCostingItem] = useState<CostingItem | null>(null)
+
   const { fetchData: fetchCostingData } = useGoogleSheet(COSTING_RESPONSE_SHEET)
   const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET)
-const formatDateValue = (value: any) => {
-  if (!value) return ""
 
-  try {
-    // If Google GViz Date format
-    if (typeof value === "string" && value.startsWith("Date(")) {
-      const parsed = parseGvizDate(value)
-      if (parsed) return format(parsed, "dd/MM/yy")
+  const formatDateValue = (value: any) => {
+    if (!value) return ""
+    try {
+      if (typeof value === "string" && value.startsWith("Date(")) {
+        const parsed = parseGvizDate(value)
+        if (parsed) return format(parsed, "dd/MM/yy")
+      }
+      if (value instanceof Date) {
+        return format(value, "dd/MM/yy")
+      }
+      return format(new Date(value), "dd/MM/yy")
+    } catch {
+      return ""
     }
-
-    // Normal Date object
-    if (value instanceof Date) {
-      return format(value, "dd/MM/yy")
-    }
-
-    // ISO string
-    return format(new Date(value), "dd/MM/yy")
-  } catch {
-    return ""
   }
-}
+
   const processGvizTable = (table: any) => {
     if (!table?.rows?.length) return []
 
@@ -200,7 +208,6 @@ const formatDateValue = (value: any) => {
     setLoading(true)
     setError(null)
     try {
-      console.log("Fetching data from Costing Response sheet...")
       const [costingTable, masterTable] = await Promise.all([
         fetchCostingData(),
         fetchMasterData(),
@@ -225,32 +232,42 @@ const formatDateValue = (value: any) => {
         iron: String(row.M || ""),
         bd: String(row.N || ""),
         ap: String(row.O || ""),
+        // RM1–RM20 (columns P to AI, indices 15–34)
+        rm1: String(row.P || ""), rm2: String(row.Q || ""), rm3: String(row.R || ""), rm4: String(row.S || ""), rm5: String(row.T || ""),
+        rm6: String(row.U || ""), rm7: String(row.V || ""), rm8: String(row.W || ""), rm9: String(row.X || ""), rm10: String(row.Y || ""),
+        rm11: String(row.Z || ""), rm12: String(row.AA || ""), rm13: String(row.AB || ""), rm14: String(row.AC || ""), rm15: String(row.AD || ""),
+        rm16: String(row.AE || ""), rm17: String(row.AF || ""), rm18: String(row.AG || ""), rm19: String(row.AH || ""), rm20: String(row.AI || ""),
+        // QTY1–QTY20 (columns AJ to BC, indices 35–54)
+        qty1: String(row.AJ || ""), qty2: String(row.AK || ""), qty3: String(row.AL || ""), qty4: String(row.AM || ""), qty5: String(row.AN || ""),
+        qty6: String(row.AO || ""), qty7: String(row.AP || ""), qty8: String(row.AQ || ""), qty9: String(row.AR || ""), qty10: String(row.AS || ""),
+        qty11: String(row.AT || ""), qty12: String(row.AU || ""), qty13: String(row.AV || ""), qty14: String(row.AW || ""), qty15: String(row.AX || ""),
+        qty16: String(row.AY || ""), qty17: String(row.AZ || ""), qty18: String(row.BA || ""), qty19: String(row.BB || ""), qty20: String(row.BC || ""),
         planned1: formatDateValue(row.BD),
         actual2: formatDateValue(row.BE),
         timeDelay1: String(row.BF || ""),
         wc: String(row.BG || ""),
         ist: String(row.BH || ""),
-      status: String(row.BI || ""),
+        status: String(row.BI || ""),
         remarks: String(row.BQ || ""),
       }))
 
       const pending = allItems.filter((item) => {
-        const hasPlanned1 = item.planned1?.trim() && 
-          item.planned1 !== "null" && 
+        const hasPlanned1 = item.planned1?.trim() &&
+          item.planned1 !== "null" &&
           item.planned1 !== "undefined"
-        const hasActual2 = item.actual2?.trim() && 
-          item.actual2 !== "null" && 
+        const hasActual2 = item.actual2?.trim() &&
+          item.actual2 !== "null" &&
           item.actual2 !== "undefined"
         return hasPlanned1 && !hasActual2
       })
 
       const history = allItems
         .filter((item) => {
-          const hasPlanned1 = item.planned1?.trim() && 
-            item.planned1 !== "null" && 
+          const hasPlanned1 = item.planned1?.trim() &&
+            item.planned1 !== "null" &&
             item.planned1 !== "undefined"
-          const hasActual2 = item.actual2?.trim() && 
-            item.actual2 !== "null" && 
+          const hasActual2 = item.actual2?.trim() &&
+            item.actual2 !== "null" &&
             item.actual2 !== "undefined"
           return hasPlanned1 && hasActual2
         })
@@ -268,7 +285,6 @@ const formatDateValue = (value: any) => {
       setTestedByOptions(testedByOpts.length > 0 ? testedByOpts : ["Dr. Arjun Patel", "Dr. Kavita Sharma", "Dr. Rajesh Gupta"])
 
     } catch (err: any) {
-      console.error("Error in loadAllData:", err)
       setError(`Failed to load data: ${err.message}`)
     } finally {
       setLoading(false)
@@ -293,7 +309,7 @@ const formatDateValue = (value: any) => {
     setFormData({
       wc: test.wc || "",
       ist: test.ist || "",
-  status: test.status || "",
+      status: test.status || "",
       remarks: test.remarks || "",
     })
     setIsDialogOpen(true)
@@ -304,15 +320,15 @@ const formatDateValue = (value: any) => {
 
     setIsSubmitting(true)
     try {
-const actual2Value = format(new Date(), "dd/MM/yy")
+      const actual2Value = format(new Date(), "dd/MM/yy")
       const columnUpdates: Record<string, string> = {
         "col57": actual2Value,
       }
 
       if (formData.wc) columnUpdates["col59"] = formData.wc
       if (formData.ist) columnUpdates["col60"] = formData.ist
-if (formData.status) columnUpdates["col61"] = formData.status      
-if (formData.remarks) columnUpdates["col69"] = formData.remarks
+      if (formData.status) columnUpdates["col61"] = formData.status
+      if (formData.remarks) columnUpdates["col69"] = formData.remarks
 
       const body = new URLSearchParams({
         sheetName: COSTING_RESPONSE_SHEET,
@@ -339,7 +355,6 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
       setIsDialogOpen(false)
       await loadAllData()
     } catch (err: any) {
-      console.error("Save error:", err)
       setError(err.message)
       alert(`Error: ${err.message}`)
     } finally {
@@ -424,6 +439,23 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
     </Popover>
   )
 
+  // Helper: build RM & QTY pair rows for the details popup
+  const getRmQtyRows = (item: CostingItem) => {
+    const rows: { rm: string; qty: string }[] = []
+    const rmKeys = ["rm1", "rm2", "rm3", "rm4", "rm5", "rm6", "rm7", "rm8", "rm9", "rm10",
+      "rm11", "rm12", "rm13", "rm14", "rm15", "rm16", "rm17", "rm18", "rm19", "rm20"] as const
+    const qtyKeys = ["qty1", "qty2", "qty3", "qty4", "qty5", "qty6", "qty7", "qty8", "qty9", "qty10",
+      "qty11", "qty12", "qty13", "qty14", "qty15", "qty16", "qty17", "qty18", "qty19", "qty20"] as const
+    for (let i = 0; i < 20; i++) {
+      const rm = item[rmKeys[i]] || ""
+      const qty = item[qtyKeys[i]] || ""
+      if (rm || qty) {
+        rows.push({ rm, qty })
+      }
+    }
+    return rows
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -475,6 +507,7 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
               </TabsTrigger>
             </TabsList>
 
+            {/* ── PENDING TAB ─────────────────────────────────────── */}
             <TabsContent value="pending">
               <Card className="shadow-sm border border-border">
                 <CardHeader className="py-3 px-4 bg-purple-50 rounded-md">
@@ -505,14 +538,25 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
                               {visiblePendingColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">
                                   {col.dataKey === "actionColumn" ? (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleOpenLabTesting(test)}
-                                      className="bg-purple-600 text-white hover:bg-purple-700"
-                                    >
-                                      <TestTube2 className="mr-2 h-4 w-4" />
-                                      Perform Test
-                                    </Button>
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleOpenLabTesting(test)}
+                                        className="bg-purple-600 text-white hover:bg-purple-700"
+                                      >
+                                        <TestTube2 className="mr-2 h-4 w-4" />
+                                        Perform Test
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setViewingCostingItem(test)}
+                                        className="h-8 border-purple-300 text-purple-700 hover:bg-purple-50"
+                                      >
+                                        <Eye className="h-4 w-4 mr-1" />
+                                        View
+                                      </Button>
+                                    </div>
                                   ) : (
                                     test[col.dataKey as keyof CostingItem] || "-"
                                   )}
@@ -540,6 +584,7 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
               </Card>
             </TabsContent>
 
+            {/* ── HISTORY TAB ─────────────────────────────────────── */}
             <TabsContent value="history">
               <Card className="shadow-sm border border-border">
                 <CardHeader className="py-3 px-4 bg-purple-50 rounded-md">
@@ -569,7 +614,19 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
                             <TableRow key={`${test._rowIndex}-${index}`} className="hover:bg-purple-50/50">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">
-                                  {test[col.dataKey as keyof HistoryItem] || "-"}
+                                  {col.dataKey === "actionColumn" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setViewingCostingItem(test)}
+                                      className="h-8 border-purple-300 text-purple-700 hover:bg-purple-50"
+                                    >
+                                      <Eye className="h-4 w-4 mr-1" />
+                                      View
+                                    </Button>
+                                  ) : (
+                                    test[col.dataKey as keyof HistoryItem] || "-"
+                                  )}
                                 </TableCell>
                               ))}
                             </TableRow>
@@ -597,6 +654,7 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
         </CardContent>
       </Card>
 
+      {/* ── PERFORM TEST DIALOG ─────────────────────────────────── */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -631,56 +689,45 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
               </div>
             </div>
 
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-  {/* WC */}
-  <div className="space-y-2">
-    <Label htmlFor="wc">Alumina Percentage %</Label>
-    <Input
-      id="wc"
-      value={formData.wc}
-      onChange={(e) => handleFormChange("wc", e.target.value)}
-      placeholder="Enter Alumina %"
-    />
-  </div>
+              {/* WC */}
+              <div className="space-y-2">
+                <Label htmlFor="wc">Alumina Percentage %</Label>
+                <Input
+                  id="wc"
+                  value={formData.wc}
+                  onChange={(e) => handleFormChange("wc", e.target.value)}
+                  placeholder="Enter Alumina %"
+                />
+              </div>
 
-  {/* IST */}
-  <div className="space-y-2">
-    <Label htmlFor="ist">Iron Percentage %</Label>
-    <Input
-      id="ist"
-      value={formData.ist}
-      onChange={(e) => handleFormChange("ist", e.target.value)}
-      placeholder="Enter Iron %"
-    />
-  </div>
-  {/* Status */}
-<div className="space-y-2">
-  <Label htmlFor="status">Status</Label>
-  <select
-    id="status"
-    value={formData.status}
-    onChange={(e) => handleFormChange("status", e.target.value)}
-    className="w-full border rounded-md p-2 text-sm"
-  >
-    <option value="">Select Status</option>
-    <option value="Done">Done</option>
-    <option value="Not Done">Not Done</option>
-  </select>
-</div>
+              {/* IST */}
+              <div className="space-y-2">
+                <Label htmlFor="ist">Iron Percentage %</Label>
+                <Input
+                  id="ist"
+                  value={formData.ist}
+                  onChange={(e) => handleFormChange("ist", e.target.value)}
+                  placeholder="Enter Iron %"
+                />
+              </div>
+              {/* Status */}
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <select
+                  id="status"
+                  value={formData.status}
+                  onChange={(e) => handleFormChange("status", e.target.value)}
+                  className="w-full border rounded-md p-2 text-sm"
+                >
+                  <option value="">Select Status</option>
+                  <option value="Done">Done</option>
+                  <option value="Not Done">Not Done</option>
+                </select>
+              </div>
 
-  {/* FST (optional if needed)
-  <div className="space-y-2">
-    <Label htmlFor="fst">FST</Label>
-    <Input
-      id="fst"
-      value={formData.fst}
-      onChange={(e) => handleFormChange("fst", e.target.value)}
-      placeholder="Enter FST"
-    />
-  </div> */}
-
-</div>
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="remarks" className="flex items-center gap-2">
@@ -706,6 +753,133 @@ if (formData.remarks) columnUpdates["col69"] = formData.remarks
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── COSTING DETAILS VIEW DIALOG ─────────────────────────── */}
+      <Dialog open={!!viewingCostingItem} onOpenChange={() => setViewingCostingItem(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-purple-700">
+              <Eye className="h-5 w-5" />
+              Costing Details
+            </DialogTitle>
+            <DialogDescription>
+              Full costing information for the selected record.
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingCostingItem && (
+            <div className="space-y-6 pt-2">
+
+              {/* ── Basic Info ─────────────────────────── */}
+              <div>
+                <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wide mb-3 border-b border-purple-100 pb-1">
+                  Basic Information
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { label: "Composition No.", value: viewingCostingItem.compositionNo },
+                    { label: "Order No.", value: viewingCostingItem.orderNo },
+                    { label: "Product Name", value: viewingCostingItem.productName },
+                    { label: "Planned 1", value: viewingCostingItem.planned1 },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-purple-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+                      <p className="text-sm font-semibold text-gray-800">{value || "-"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Costing ────────────────────────────── */}
+              <div>
+                <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wide mb-3 border-b border-purple-100 pb-1">
+                  Costing
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {[
+                    { label: "Variable Cost", value: viewingCostingItem.variableCost },
+                    { label: "Manufacturing Cost", value: viewingCostingItem.manufacturingCost },
+                    { label: "Interest (days)", value: viewingCostingItem.interestDays },
+                    { label: "Interest Cost", value: viewingCostingItem.interestCost },
+                    { label: "Transporting (FOR)", value: viewingCostingItem.transportingFor },
+                    { label: "Selling Price", value: viewingCostingItem.sellingPrice },
+                    { label: "GP %AGE", value: viewingCostingItem.gpPercentage },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                      <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+                      <p className="text-sm font-semibold text-gray-800">{value || "-"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Quality Parameters ─────────────────── */}
+              <div>
+                <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wide mb-3 border-b border-purple-100 pb-1">
+                  Quality Parameters
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: "Alumina", value: viewingCostingItem.alumina },
+                    { label: "Iron", value: viewingCostingItem.iron },
+                    { label: "BD", value: viewingCostingItem.bd },
+                    { label: "AP", value: viewingCostingItem.ap },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                      <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+                      <p className="text-sm font-semibold text-gray-800">{value || "-"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Raw Materials ──────────────────────── */}
+              {(() => {
+                const rmRows = getRmQtyRows(viewingCostingItem)
+                return rmRows.length > 0 ? (
+                  <div>
+                    <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wide mb-3 border-b border-purple-100 pb-1">
+                      Raw Materials & Quantities
+                    </h3>
+                    <div className="relative rounded-lg border overflow-hidden">
+                      <Table>
+                        <TableHeader className="bg-slate-100 sticky top-0 z-10">
+                          <TableRow>
+                            <TableHead className="w-10">#</TableHead>
+                            <TableHead>Material (RM)</TableHead>
+                            <TableHead>Quantity (QTY %)</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {rmRows.map((row, i) => (
+                            <TableRow key={i} className="hover:bg-purple-50/40">
+                              <TableCell className="text-xs text-gray-400">{i + 1}</TableCell>
+                              <TableCell className="font-medium text-sm">{row.rm || "-"}</TableCell>
+                              <TableCell className="text-sm">{row.qty || "-"}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400 italic">No raw materials recorded.</div>
+                )
+              })()}
+
+              <div className="flex justify-end pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setViewingCostingItem(null)}
+                  className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

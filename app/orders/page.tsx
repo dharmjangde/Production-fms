@@ -163,7 +163,7 @@ export default function OrdersPage() {
       priority: false,
       crmName: false,
       orderCancel: false,
-      cancelReason: false,
+      cancelReason: true,
       dateOfCompletePlanning: false,
       note: false,
     }
@@ -214,7 +214,9 @@ export default function OrdersPage() {
 
   const fetchProductionData = async () => {
     try {
-      const productionUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Production&headers=0&cb=${new Date().getTime()}`;
+      // headers=3 tells gviz to skip the first 3 header rows in the Production sheet,
+      // so table.rows[0] is the first real data row — no manual .slice() needed.
+      const productionUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Production&headers=3&cb=${new Date().getTime()}`;
       const productionResponse = await fetch(productionUrl);
       if (productionResponse.ok) {
         const productionText = await productionResponse.text();
@@ -222,30 +224,44 @@ export default function OrdersPage() {
         if (productionMatch && productionMatch[1]) {
           const gvizResponse = JSON.parse(productionMatch[1]);
 
-          // Skip 5 header rows as per the user's request and screenshot structure
-          const rows = gvizResponse.table.rows.slice(3).map((row: any) => ({
-            timestamp: row.c[0]?.v || "",
-            deliveryOrderNo: row.c[1]?.v || "",
-            firmName: row.c[2]?.v || "",
-            partyName: row.c[3]?.v || "",
-            productName: row.c[4]?.v || "",
-            orderQuantity: row.c[5]?.v || "",
-            expectedDeliveryDate: row.c[6]?.v || "",
-            priority: row.c[7]?.v || "",
-            note: row.c[8]?.v || "",
-            crmName: row.c[9]?.v || "",
-            orderCancel: row.c[10]?.v || "",
-            actualProductionPlanned: row.c[11]?.v || "",
-            actualProductionDone: row.c[12]?.v || "",
-            stockTransferred: row.c[13]?.v || "",
-            quantityDelivered: row.c[14]?.v || "",
-            quantityInStock: row.c[15]?.v || "",
-            planningPending: row.c[16]?.v || "",
-            productionPending: row.c[17]?.v || "",
-            status: row.c[18]?.v || "",
-            dateOfCompletePlanning: row.c[19]?.v || "",
-            cancelReason: row.c[26]?.v || "", // Column AA (index 26)
-          })).filter((row: any) => row.timestamp || row.deliveryOrderNo);
+          // No slice needed — gviz already skipped the 3 header rows via &headers=3
+          const rows = gvizResponse.table.rows
+            .map((row: any) => ({
+              timestamp: row.c[0]?.v || "",
+              deliveryOrderNo: row.c[1]?.v || "",
+              firmName: row.c[2]?.v || "",
+              partyName: row.c[3]?.v || "",
+              productName: row.c[4]?.v || "",
+              orderQuantity: row.c[5]?.v || "",
+              expectedDeliveryDate: row.c[6]?.v || "",
+              priority: row.c[7]?.v || "",
+              note: row.c[8]?.v || "",
+              crmName: row.c[9]?.v || "",
+              orderCancel: row.c[10]?.v || "",
+              actualProductionPlanned: row.c[11]?.v || "",
+              actualProductionDone: row.c[12]?.v || "",
+              stockTransferred: row.c[13]?.v || "",
+              quantityDelivered: row.c[14]?.v || "",
+              quantityInStock: row.c[15]?.v || "",
+              planningPending: row.c[16]?.v || "",
+              productionPending: row.c[17]?.v || "",
+              status: row.c[18]?.v || "",
+              dateOfCompletePlanning: row.c[19]?.v || "",
+              cancelReason: row.c[26]?.v || "", // Column AA (index 26)
+            }))
+            .filter((row: any) => {
+              // Only keep rows that have a real timestamp (Date object or date string)
+              // OR a real delivery order number — this filters out any leftover header rows
+              const ts = row.timestamp;
+              const doNo = row.deliveryOrderNo;
+              const hasTimestamp = ts && typeof ts === "string"
+                ? ts.startsWith("Date(") || /^\d{2}\/\d{2}\/\d{4}/.test(ts)
+                : !!ts;
+              const hasDoNo = doNo && String(doNo).trim() !== "" &&
+                String(doNo).toLowerCase() !== "delivery order no." &&
+                String(doNo).toLowerCase() !== "do no.";
+              return hasTimestamp || hasDoNo;
+            });
 
           setProductionData(rows);
         }
@@ -382,98 +398,98 @@ export default function OrdersPage() {
     setIsCancelDialogOpen(true);
   };
 
- const submitCancelOrder = async () => {
-  if (!selectedItem) return;
+  const submitCancelOrder = async () => {
+    if (!selectedItem) return;
 
-  if (!cancelQuantity || Number(cancelQuantity) <= 0) {
-    alert("Please enter a valid cancel quantity");
-    return;
-  }
-
-  if (!cancelReason.trim()) {
-    alert("Please enter a reason for cancellation");
-    return;
-  }
-
-  setIsSubmittingCancel(true);
-
-  try {
-    // Fetch Production sheet
-    const productionUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Production`;
-    const response = await fetch(productionUrl);
-    const text = await response.text();
-
-    const match = text.match(/google\.visualization\.Query\.setResponse\((.*)\)/);
-    if (!match || !match[1]) {
-      throw new Error("Failed to parse Production sheet");
+    if (!cancelQuantity || Number(cancelQuantity) <= 0) {
+      alert("Please enter a valid cancel quantity");
+      return;
     }
 
-    const gviz = JSON.parse(match[1]);
-    const rows = gviz.table.rows;
+    if (!cancelReason.trim()) {
+      alert("Please enter a reason for cancellation");
+      return;
+    }
 
-    let targetRowIndex = -1;
+    setIsSubmittingCancel(true);
 
-    /**
-     * IMPORTANT:
-     * Your real data starts AFTER 3 header rows
-     * So we need to start from index 3 (skip first 3 header rows)
-     */
-    for (let i = 3; i < rows.length; i++) {
-      const row = rows[i];
-      const doNo = row.c?.[1]?.v; // Column B (index 1) contains DO No.
-      
-      const sheetDo = String(doNo || "").trim().toUpperCase();
-      const selectedDo = String(selectedItem.deliveryOrderNo || "").trim().toUpperCase();
+    try {
+      // Fetch Production sheet
+      const productionUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Production`;
+      const response = await fetch(productionUrl);
+      const text = await response.text();
 
-      if (sheetDo === selectedDo) {
-        targetRowIndex = i + 4; // Google sheet rows are 1-based, but we need actual sheet row number
-        break;
+      const match = text.match(/google\.visualization\.Query\.setResponse\((.*)\)/);
+      if (!match || !match[1]) {
+        throw new Error("Failed to parse Production sheet");
       }
+
+      const gviz = JSON.parse(match[1]);
+      const rows = gviz.table.rows;
+
+      let targetRowIndex = -1;
+
+      /**
+       * IMPORTANT:
+       * Your real data starts AFTER 3 header rows
+       * So we need to start from index 3 (skip first 3 header rows)
+       */
+      for (let i = 3; i < rows.length; i++) {
+        const row = rows[i];
+        const doNo = row.c?.[1]?.v; // Column B (index 1) contains DO No.
+
+        const sheetDo = String(doNo || "").trim().toUpperCase();
+        const selectedDo = String(selectedItem.deliveryOrderNo || "").trim().toUpperCase();
+
+        if (sheetDo === selectedDo) {
+          targetRowIndex = i + 4; // Google sheet rows are 1-based, but we need actual sheet row number
+          break;
+        }
+      }
+
+      if (targetRowIndex === -1) {
+        throw new Error("Delivery Order No not found in Production sheet");
+      }
+
+      // Column Index Mapping (ZERO BASED for cellUpdates)
+      const cellUpdates = {
+        11: cancelQuantity,  // K → Order Cancel (index 10)
+        27: cancelReason     // AA → Cancel Reason (index 26)
+      };
+
+      const body = new URLSearchParams({
+        sheetName: "Production",
+        action: "updateCells",
+        rowIndex: targetRowIndex.toString(),
+        cellUpdates: JSON.stringify(cellUpdates)
+      });
+
+      const updateResponse = await fetch(WEB_APP_URL, {
+        method: "POST",
+        body
+      });
+
+      const result = await updateResponse.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to cancel order");
+      }
+
+      alert("Order cancelled successfully!");
+
+      setIsCancelDialogOpen(false);
+      setCancelQuantity("");
+      setCancelReason("");
+
+      await fetchProductionData(); // refresh table
+
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : "Cancel failed");
+    } finally {
+      setIsSubmittingCancel(false);
     }
-
-    if (targetRowIndex === -1) {
-      throw new Error("Delivery Order No not found in Production sheet");
-    }
-
-    // Column Index Mapping (ZERO BASED for cellUpdates)
-    const cellUpdates = {
-      11: cancelQuantity,  // K → Order Cancel (index 10)
-      27: cancelReason     // AA → Cancel Reason (index 26)
-    };
-
-    const body = new URLSearchParams({
-      sheetName: "Production",
-      action: "updateCells",
-      rowIndex: targetRowIndex.toString(),
-      cellUpdates: JSON.stringify(cellUpdates)
-    });
-
-    const updateResponse = await fetch(WEB_APP_URL, {
-      method: "POST",
-      body
-    });
-
-    const result = await updateResponse.json();
-
-    if (!result.success) {
-      throw new Error(result.error || "Failed to cancel order");
-    }
-
-    alert("Order cancelled successfully!");
-
-    setIsCancelDialogOpen(false);
-    setCancelQuantity("");
-    setCancelReason("");
-
-    await fetchProductionData(); // refresh table
-
-  } catch (error) {
-    console.error(error);
-    alert(error instanceof Error ? error.message : "Cancel failed");
-  } finally {
-    setIsSubmittingCancel(false);
-  }
-};
+  };
 
   const formatDate = (date: Date) =>
     date.toLocaleDateString('en-US', {
@@ -518,7 +534,7 @@ export default function OrdersPage() {
   // Filter data based on active tab
   const filteredData = useMemo(() => {
     if (activeTab === "all") return productionData
-    if (activeTab === "pending") return productionData.filter(item => item.status?.toLowerCase() === 'pending')
+    if (activeTab === "pending") return productionData.filter(item => item.status?.toLowerCase() === 'pending' && !item.orderCancel)
     if (activeTab === "in-progress") return productionData.filter(item => item.status?.toLowerCase() === 'in progress' || item.status?.toLowerCase() === 'in-progress')
     if (activeTab === "completed")
       return productionData.filter(

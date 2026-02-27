@@ -115,10 +115,15 @@ export default function ManagementApprovalPage() {
     setVisibleHistoryColumns(initializeVisibility(HISTORY_COLUMNS_META))
   }, [])
 
-  const fetchDataWithGviz = useCallback(async (sheetName: string) => {
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(
+  const fetchDataWithGviz = useCallback(async (sheetName: string, headersCount?: number) => {
+    // headersCount tells gviz how many header rows to skip in the sheet.
+    // For "Actual Production" this is 5 (rows 1-5 are headers, data starts at row 6).
+    let url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(
       sheetName,
     )}&cb=${new Date().getTime()}`
+    if (headersCount !== undefined) {
+      url += `&headers=${headersCount}`
+    }
     try {
       const response = await fetch(url, { cache: "no-store" })
       if (!response.ok) throw new Error(`Network response was not ok for ${sheetName}.`)
@@ -138,18 +143,20 @@ export default function ManagementApprovalPage() {
     setError(null)
     try {
       const [actualProductionTable, jobCardsTable] = await Promise.all([
-        fetchDataWithGviz(ACTUAL_PRODUCTION_SHEET),
+        // Pass headers=5: the Actual Production sheet has 5 header rows (rows 1-5),
+        // so gviz will skip them and table.rows[0] will be the first real data row (row 6).
+        fetchDataWithGviz(ACTUAL_PRODUCTION_SHEET, 5),
         fetchDataWithGviz(JOB_CARDS_SHEET).catch(() => ({ rows: [] })),
       ])
 
       const processGvizTable = (table: any) => {
         if (!table || !table.rows || table.rows.length === 0) return []
-        // Skip the first row (header row)
+        // No slice needed: for Actual Production, gviz already skipped the 5 header rows
+        // via the &headers=5 URL parameter, so table.rows[0] is the first real data row.
         return table.rows
-          .slice(1)
           .map((row: GvizRow, index: number) => {
             if (!row.c || !row.c.some((cell) => cell && cell.v !== null)) return null
-            const rowData: { [key: string]: any } = { _originalIndex: index + 2 }
+            const rowData: { [key: string]: any } = { _originalIndex: index }
             row.c.forEach((cell, cellIndex) => {
               rowData[`col${cellIndex}`] = cell ? cell.v : null
             })
@@ -168,20 +175,22 @@ export default function ManagementApprovalPage() {
       const pendingData: PendingApprovalItem[] = actualProductionRows
         .filter(
           (row: { [key: string]: any }) => {
-            // Check if Planned4 has value (col69)
+            // Check if Planned4 has value (col69) - handles dates, strings, numbers
+            const p4val = row.col69;
             const hasPlanned4 = (
-              row.col69 !== null && 
-              row.col69 !== undefined && 
-              String(row.col69).trim() !== "" && 
-              String(row.col69).trim() !== "null"
+              p4val !== null &&
+              p4val !== undefined &&
+              String(p4val).trim() !== "" &&
+              String(p4val).trim().toLowerCase() !== "null"
             );
 
             // Check if Actual4 is empty (col70)
+            const a4val = row.col70;
             const isActual4Empty = (
-              row.col70 === null || 
-              row.col70 === undefined || 
-              String(row.col70).trim() === "" || 
-              String(row.col70).trim() === "null"
+              a4val === null ||
+              a4val === undefined ||
+              String(a4val).trim() === "" ||
+              String(a4val).trim().toLowerCase() === "null"
             );
 
             // Log for debugging
@@ -199,19 +208,21 @@ export default function ManagementApprovalPage() {
               row.col1 !== null &&
               row.col1 !== undefined &&
               String(row.col1).trim() !== "" &&
-              
+
               // Planned4 has value
               hasPlanned4 &&
-              
+
               // Actual4 is empty
               isActual4Empty
             );
           }
         )
         .map((row: { [key: string]: any }) => {
-          const jobCard = jobCardsRows.find((jc: { [key: string]: any }) => 
+          const jobCard = jobCardsRows.find((jc: { [key: string]: any }) =>
             String(jc.col1 || '').trim() === String(row.col1 || '').trim()
           );
+
+          const plannedDate = parseGvizDate(row.col69);
 
           return {
             jobCardNo: String(row.col1 || ""),
@@ -219,7 +230,9 @@ export default function ManagementApprovalPage() {
             productName: String(row.col5 || ""),
             firmName: String(row.col2 || ""),
             partyName: String(jobCard?.col5 || ""),
-            planned4: String(row.col69 || ""),
+            planned4: plannedDate
+              ? format(plannedDate, "dd/MM/yy")
+              : String(row.col69 || ""),
           };
         });
 
@@ -231,24 +244,24 @@ export default function ManagementApprovalPage() {
         .filter(
           (row: { [key: string]: any }) => {
             const hasPlanned4 = (
-              row.col69 !== null && 
-              row.col69 !== undefined && 
-              String(row.col69).trim() !== "" && 
-              String(row.col69).trim() !== "null"
+              row.col69 !== null &&
+              row.col69 !== undefined &&
+              String(row.col69).trim() !== "" &&
+              String(row.col69).trim().toLowerCase() !== "null"
             );
 
             const hasActual4 = (
-              row.col70 !== null && 
-              row.col70 !== undefined && 
-              String(row.col70).trim() !== "" && 
-              String(row.col70).trim() !== "null"
+              row.col70 !== null &&
+              row.col70 !== undefined &&
+              String(row.col70).trim() !== "" &&
+              String(row.col70).trim().toLowerCase() !== "null"
             );
 
             return hasPlanned4 && hasActual4;
           }
         )
         .map((row: { [key: string]: any }) => {
-          const jobCard = jobCardsRows.find((jc: { [key: string]: any }) => 
+          const jobCard = jobCardsRows.find((jc: { [key: string]: any }) =>
             String(jc.col1 || '').trim() === String(row.col1 || '').trim()
           );
 

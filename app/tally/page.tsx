@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Loader2, AlertTriangle, FileText, History } from "lucide-react"
+import { Loader2, AlertTriangle, FileText, History, Package, DollarSign, Clock, User, Building, Hash, CheckCircle, Calendar } from "lucide-react"
 import { format } from "date-fns"
 // Shadcn UI components
 import { Button } from "@/components/ui/button"
@@ -12,13 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Separator } from "@/components/ui/separator"
 
 // --- Configuration ---
 const WEB_APP_URL =
   "https://script.google.com/macros/s/AKfycbzVnLwTlFuGrlzyPSa2VWy4h9sU2EQrsuKrPLvQvhZoaoJu8GilGDc5aQTgLliUD7ss/exec"
 const SHEET_ID = "1Oh16UfYFmNff0YLxHRh_D3mw3r7m7b9FOvxRpJxCUh4"
 const ACTUAL_PRODUCTION_SHEET = "Actual Production"
-const JOBCARDS_SHEET = "JobCards" // Corrected to use the JobCards sheet
 
 // --- Column Mapping for Tally Data ---
 const TALLY_COLUMNS = {
@@ -26,23 +26,62 @@ const TALLY_COLUMNS = {
   remarks: 66, // Column BN (index 65, but 1-based = 66)
 }
 
-// --- Type Definitions ---
-interface PendingTallyItem {
+// --- Type Definitions for Actual Production Data ---
+interface ActualProductionItem {
+  // Basic Info (Columns 0-7)
+  timestamp: string
   jobCardNo: string
-  deliveryOrderNo: string
+  firmName: string
+  dateOfProduction: string
+  nameOfSupervisor: string
   productName: string
-  quantity: number
+  quantityOfFG: number
+  serialNumber: string
+  
+  // Raw Materials (20 pairs - Columns 8-47)
+  rawMaterials: {
+    name: string
+    quantity: string | number
+  }[]
+  
+  // Additional Fields (Columns 48-68)
+  machineRunningHour: string
+  remarks1: string
+  ppBagUsed: string
+  ppBagToBeUsed: string
+  partyName: string
+  ppBagSmall: string
+  costingAmount: number
+  colorCondition: string
+  orderNo: string
+  planned1: string
+  actual1: string
+  status: string
+  actualQty1: string
+  planned2: string
+  actual2: string
+  timeDelay2: string
+  remarks: string
+  planned3: string
+  actual3: string
+  costingAmount2: string
+  planned4: string
+  actual4: string
+  remarks1_2: string
+  planned5: string
+  actual5: string
+  remarks2: string
+  planned6: string
+  actual6: string
+  remarks3: string
+  
+  // Tally specific fields
   checkStatus: string
   checkTimestamp: string
-}
-
-interface HistoryTallyItem {
-  jobCardNo: string
-  deliveryOrderNo: string
-  productName: string
-  quantity: number
-  tallyTimestamp: string
-  remarks: string
+  tallyTimestamp: string | null
+  tallyRemarks: string
+  _rawCheckTimestamp: any
+  _rawTallyTimestamp: any
 }
 
 interface GvizRow {
@@ -59,14 +98,24 @@ function parseGvizDate(gvizDateString: string | null | undefined): Date | null {
   return isNaN(date.getTime()) ? null : date
 }
 
+// Helper function to format date values
+function formatDateValue(value: any): string {
+  if (!value) return "N/A"
+  if (typeof value === 'string' && value.startsWith('Date(')) {
+    const parsed = parseGvizDate(value)
+    return parsed ? format(parsed, "dd/MM/yyyy HH:mm") : value
+  }
+  return String(value)
+}
+
 export default function TallyPage() {
-  const [pendingTallies, setPendingTallies] = useState<PendingTallyItem[]>([])
-  const [historyTallies, setHistoryTallies] = useState<HistoryTallyItem[]>([])
+  const [pendingTallies, setPendingTallies] = useState<ActualProductionItem[]>([])
+  const [historyTallies, setHistoryTallies] = useState<ActualProductionItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [selectedTally, setSelectedTally] = useState<PendingTallyItem | null>(null)
+  const [selectedTally, setSelectedTally] = useState<ActualProductionItem | null>(null)
   const [remarks, setRemarks] = useState("")
 
   const fetchDataWithGviz = useCallback(async (sheetName: string) => {
@@ -87,14 +136,84 @@ export default function TallyPage() {
     }
   }, [])
 
+  const processActualProductionRow = (row: any): ActualProductionItem => {
+    // Extract raw materials (20 pairs from columns 8-47)
+    const rawMaterials = []
+    for (let i = 0; i < 20; i++) {
+      const nameCol = 8 + (i * 2) // Raw Material Name columns
+      const qtyCol = 9 + (i * 2)   // Quantity columns
+      
+      const rawMaterialName = row[`col${nameCol}`]
+      const rawMaterialQty = row[`col${qtyCol}`]
+      
+      if (rawMaterialName && String(rawMaterialName).trim() !== "") {
+        rawMaterials.push({
+          name: String(rawMaterialName || ""),
+          quantity: rawMaterialQty || 0
+        })
+      }
+    }
+
+    return {
+      // Basic Info
+      timestamp: formatDateValue(row.col0),
+      jobCardNo: String(row.col1 || ""),
+      firmName: String(row.col2 || ""),
+      dateOfProduction: formatDateValue(row.col3),
+      nameOfSupervisor: String(row.col4 || ""),
+      productName: String(row.col5 || ""),
+      quantityOfFG: Number(row.col6 || 0),
+      serialNumber: String(row.col7 || ""),
+      
+      // Raw Materials
+      rawMaterials,
+      
+      // Additional Fields (adjust indices based on your actual columns)
+      machineRunningHour: String(row.col48 || ""),
+      remarks1: String(row.col49 || ""),
+      ppBagUsed: String(row.col50 || ""),
+      ppBagToBeUsed: String(row.col51 || ""),
+      partyName: String(row.col52 || ""),
+      ppBagSmall: String(row.col53 || ""),
+      costingAmount: Number(row.col54 || 0),
+      colorCondition: String(row.col55 || ""),
+      orderNo: String(row.col56 || ""),
+      planned1: String(row.col57 || ""),
+      actual1: String(row.col58 || ""),
+      status: String(row.col59 || ""),
+      actualQty1: String(row.col60 || ""),
+      planned2: String(row.col61 || ""),
+      actual2: String(row.col62 || ""),
+      timeDelay2: String(row.col63 || ""),
+      remarks: String(row.col64 || ""),
+      planned3: String(row.col65 || ""),
+      actual3: String(row.col66 || ""),
+      costingAmount2: String(row.col67 || ""),
+      planned4: String(row.col68 || ""),
+      actual4: String(row.col69 || ""),
+      remarks1_2: String(row.col70 || ""),
+      planned5: String(row.col71 || ""),
+      actual5: String(row.col72 || ""),
+      remarks2: String(row.col73 || ""),
+      planned6: String(row.col74 || ""),
+      actual6: String(row.col75 || ""),
+      remarks3: String(row.col76 || ""),
+      
+      // Tally specific fields
+      checkStatus: String(row.col59 || "N/A"), // Status column
+      checkTimestamp: row.col58 ? formatDateValue(row.col58) : "N/A", // Actual1 column
+      tallyTimestamp: row.col63 ? formatDateValue(row.col63) : null, // Actual2 column (tally timestamp)
+      tallyRemarks: String(row.col65 || ""), // Remarks column
+      _rawCheckTimestamp: row.col58,
+      _rawTallyTimestamp: row.col63,
+    }
+  }
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [actualProductionTable, jobCardsTable] = await Promise.all([
-        fetchDataWithGviz(ACTUAL_PRODUCTION_SHEET),
-        fetchDataWithGviz(JOBCARDS_SHEET).catch(() => ({ rows: [] })),
-      ]);
+      const actualProductionTable = await fetchDataWithGviz(ACTUAL_PRODUCTION_SHEET);
 
       const processGvizTable = (table: any) => {
         if (!table || !table.rows || table.rows.length === 0) return [];
@@ -110,49 +229,27 @@ export default function TallyPage() {
           .filter(Boolean);
       };
 
-      const actualProductionRows = processGvizTable(actualProductionTable).slice(1);
-      const jobCardsRows = processGvizTable(jobCardsTable);
+      const actualProductionRows = processGvizTable(actualProductionTable).slice(1); // Skip header row
+      
+      // Process all rows
+      const allItems = actualProductionRows.map(row => processActualProductionRow(row));
 
-      // Create a lookup Map from the JobCards sheet for fast joining
-      const jobCardsMap = new Map();
-      jobCardsRows.forEach((row) => {
-        // --- THIS IS THE CORRECTED LINE ---
-        // Key is now Job Card Number (Column B), normalized
-        const jobCardNo = String(row.col1 || "").trim().toUpperCase(); // Corrected from col2 to col1
-
-        if (jobCardNo) {
-          jobCardsMap.set(jobCardNo, {
-            deliveryOrderNo: String(row.col4 || ""), // Column E
-            productName: String(row.col6 || "N/A"), // Column G
-            quantity: Number(row.col7 || 0),        // Column H
-          });
-        }
-      });
-
-      // Map over all items from Actual Production and join with JobCard data
-      const allItems = actualProductionRows.map((row) => {
-        const jobCardKey = String(row.col1 || "").trim().toUpperCase();
-        const jobCardInfo = jobCardsMap.get(jobCardKey) || { deliveryOrderNo: "N/A", productName: "N/A", quantity: 0 };
-
-        return {
-          jobCardNo: String(row.col1 || ""),
-          deliveryOrderNo: jobCardInfo.deliveryOrderNo,
-          productName: jobCardInfo.productName,
-          quantity: jobCardInfo.quantity,
-          checkStatus: String(row.col60 || "N/A"),
-          checkTimestamp: row.col58 ? (parseGvizDate(row.col58) ? format(parseGvizDate(row.col58)!, "dd/MM/yy HH:mm") : String(row.col58)) : "N/A",
-          tallyTimestamp: row.col63 ? (parseGvizDate(row.col63) ? format(parseGvizDate(row.col63)!, "dd/MM/yy HH:mm") : String(row.col63)) : null,
-          remarks: String(row.col65 || ""),
-          _rawCheckTimestamp: row.col62,
-          _rawTallyTimestamp: row.col63,
-        };
-      });
-
-      // Filtering logic
-      const pendingData = allItems.filter(item => item._rawCheckTimestamp && (item._rawTallyTimestamp === null || String(item._rawTallyTimestamp).trim() === ""));
+      // Filter pending tallies (have check timestamp but no tally timestamp)
+      const pendingData = allItems.filter(item => 
+        item._rawCheckTimestamp && 
+        (item._rawTallyTimestamp === null || String(item._rawTallyTimestamp).trim() === "")
+      );
       setPendingTallies(pendingData);
 
-      const historyData = allItems.filter(item => item._rawTallyTimestamp && String(item._rawTallyTimestamp).trim() !== "").sort((a, b) => new Date(b.tallyTimestamp!).getTime() - new Date(a.tallyTimestamp!).getTime());
+      // Filter history (have tally timestamp)
+      const historyData = allItems
+        .filter(item => item._rawTallyTimestamp && String(item._rawTallyTimestamp).trim() !== "")
+        .sort((a, b) => {
+          if (a.tallyTimestamp && b.tallyTimestamp) {
+            return new Date(b.tallyTimestamp).getTime() - new Date(a.tallyTimestamp).getTime()
+          }
+          return 0
+        });
       setHistoryTallies(historyData);
 
     } catch (err: any) {
@@ -166,7 +263,7 @@ export default function TallyPage() {
     loadData()
   }, [loadData])
 
-  const handleVerify = (tally: PendingTallyItem) => {
+  const handleVerify = (tally: ActualProductionItem) => {
     setSelectedTally(tally)
     setRemarks("")
     setIsDialogOpen(true)
@@ -215,7 +312,7 @@ export default function TallyPage() {
     {
       header: "Action",
       key: "actionColumn",
-      render: (tally: PendingTallyItem) => (
+      render: (tally: ActualProductionItem) => (
         <Button size="sm" onClick={() => handleVerify(tally)} className="bg-purple-600 text-white hover:bg-purple-700">
           <FileText className="mr-2 h-4 w-4" />
           Verify Tally
@@ -225,43 +322,62 @@ export default function TallyPage() {
     {
       header: "Job Card No.",
       key: "jobCardNo",
-      render: (tally: PendingTallyItem) => <span className="font-medium">{tally.jobCardNo}</span>,
+      render: (tally: ActualProductionItem) => <span className="font-medium">{tally.jobCardNo}</span>,
     },
     {
-      header: "Delivery Order No.",
-      key: "deliveryOrderNo",
-      render: (tally: PendingTallyItem) => tally.deliveryOrderNo,
+      header: "Firm Name",
+      key: "firmName",
+      render: (tally: ActualProductionItem) => tally.firmName,
     },
-    { header: "Product Name", key: "productName", render: (tally: PendingTallyItem) => tally.productName },
-    { header: "Quantity", key: "quantity", render: (tally: PendingTallyItem) => tally.quantity },
+    { 
+      header: "Product Name", 
+      key: "productName", 
+      render: (tally: ActualProductionItem) => tally.productName 
+    },
+    { 
+      header: "Quantity", 
+      key: "quantityOfFG", 
+      render: (tally: ActualProductionItem) => tally.quantityOfFG 
+    },
     {
-      header: "Check Status",
-      key: "checkStatus",
-      render: (tally: PendingTallyItem) => <Badge variant="default">{tally.checkStatus}</Badge>,
+      header: "Status",
+      key: "status",
+      render: (tally: ActualProductionItem) => <Badge variant="default">{tally.status}</Badge>,
     },
-    { header: "Check Date", key: "checkTimestamp", render: (tally: PendingTallyItem) => tally.checkTimestamp },
   ]
 
   const historyTableColumns = [
     {
       header: "Job Card No.",
       key: "jobCardNo",
-      render: (tally: HistoryTallyItem) => <span className="font-medium">{tally.jobCardNo}</span>,
+      render: (tally: ActualProductionItem) => <span className="font-medium">{tally.jobCardNo}</span>,
     },
     {
-      header: "Delivery Order No.",
-      key: "deliveryOrderNo",
-      render: (tally: HistoryTallyItem) => tally.deliveryOrderNo,
+      header: "Firm Name",
+      key: "firmName",
+      render: (tally: ActualProductionItem) => tally.firmName,
     },
-    { header: "Product Name", key: "productName", render: (tally: HistoryTallyItem) => tally.productName },
-    { header: "Quantity", key: "quantity", render: (tally: HistoryTallyItem) => tally.quantity },
-    { header: "Tally Date", key: "tallyTimestamp", render: (tally: HistoryTallyItem) => tally.tallyTimestamp },
+    { 
+      header: "Product Name", 
+      key: "productName", 
+      render: (tally: ActualProductionItem) => tally.productName 
+    },
+    { 
+      header: "Quantity", 
+      key: "quantityOfFG", 
+      render: (tally: ActualProductionItem) => tally.quantityOfFG 
+    },
+    { 
+      header: "Tally Date", 
+      key: "tallyTimestamp", 
+      render: (tally: ActualProductionItem) => tally.tallyTimestamp || "N/A" 
+    },
     {
       header: "Remarks",
-      key: "remarks",
-      render: (tally: HistoryTallyItem) => (
-        <span className="max-w-xs truncate" title={tally.remarks}>
-          {tally.remarks || "-"}
+      key: "tallyRemarks",
+      render: (tally: ActualProductionItem) => (
+        <span className="max-w-xs truncate" title={tally.tallyRemarks}>
+          {tally.tallyRemarks || "-"}
         </span>
       ),
     },
@@ -320,8 +436,8 @@ export default function TallyPage() {
 
             <TabsContent value="pending">
               <Card className="shadow-sm border border-border">
-                <CardHeader className="py-3 px-4 bg-purple-50 rounded-md p-2">
-                  <CardTitle className="text-md font-semibold text-foreground">
+                <CardHeader className="py-3 px-4 bg-purple-50 rounded-md">
+                  <CardTitle className="text-md font-semibold">
                     Pending Tallies ({pendingTallies.length})
                   </CardTitle>
                 </CardHeader>
@@ -349,7 +465,7 @@ export default function TallyPage() {
                             <TableCell colSpan={pendingTableColumns.length} className="h-48">
                               <div className="flex flex-col items-center justify-center text-center">
                                 <FileText className="h-12 w-12 text-purple-500 mb-3" />
-                                <p className="font-medium text-foreground">No Pending Tallies</p>
+                                <p className="font-medium">No Pending Tallies</p>
                                 <p className="text-sm text-muted-foreground">
                                   All production tallies have been verified.
                                 </p>
@@ -366,8 +482,8 @@ export default function TallyPage() {
 
             <TabsContent value="history">
               <Card className="shadow-sm border border-border">
-                <CardHeader className="py-3 px-4 bg-purple-50 rounded-md p-2">
-                  <CardTitle className="text-md font-semibold text-foreground">
+                <CardHeader className="py-3 px-4 bg-purple-50 rounded-md">
+                  <CardTitle className="text-md font-semibold">
                     Tally History ({historyTallies.length})
                   </CardTitle>
                 </CardHeader>
@@ -395,7 +511,7 @@ export default function TallyPage() {
                             <TableCell colSpan={historyTableColumns.length} className="h-48">
                               <div className="flex flex-col items-center justify-center text-center">
                                 <History className="h-12 w-12 text-purple-500 mb-3" />
-                                <p className="font-medium text-foreground">No Tally History</p>
+                                <p className="font-medium">No Tally History</p>
                                 <p className="text-sm text-muted-foreground">
                                   Completed tally records will appear here.
                                 </p>
@@ -414,66 +530,236 @@ export default function TallyPage() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Verify Tally for JC: {selectedTally?.jobCardNo}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-xl border-b pb-2">
+              <Package className="h-5 w-5 text-purple-600" />
+              Complete Production Details - Job Card: {selectedTally?.jobCardNo}
+            </DialogTitle>
             <DialogDescription>
-              Review the production details and add any remarks for the tally verification.
+              All information from Actual Production sheet for this job card
             </DialogDescription>
           </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleSaveTally()
-            }}
-            className="space-y-6 pt-4"
-          >
-            <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/50">
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground">Job Card No.</Label>
-                <p className="text-sm font-semibold">{selectedTally?.jobCardNo}</p>
+          
+          {selectedTally && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleSaveTally()
+              }}
+              className="space-y-6 pt-2"
+            >
+              {/* Section 1: Basic Information */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-purple-700 bg-purple-50 p-2 rounded">
+                  <Building className="h-4 w-4" /> Basic Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Hash className="h-3 w-3" /> Job Card Number
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedTally.jobCardNo || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Building className="h-3 w-3" /> Firm Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedTally.firmName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Calendar className="h-3 w-3" /> Date of Production
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedTally.dateOfProduction || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <User className="h-3 w-3" /> Name of Supervisor
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedTally.nameOfSupervisor || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Package className="h-3 w-3" /> Product Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedTally.productName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Package className="h-3 w-3" /> Quantity of FG
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedTally.quantityOfFG || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Hash className="h-3 w-3" /> Serial Number
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedTally.serialNumber || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> Machine Running Hour
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedTally.machineRunningHour || "N/A"}</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground">Delivery Order No.</Label>
-                <p className="text-sm font-semibold">{selectedTally?.deliveryOrderNo}</p>
+
+              {/* Section 2: Raw Materials */}
+              {selectedTally.rawMaterials.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-md font-semibold flex items-center gap-2 text-blue-700 bg-blue-50 p-2 rounded">
+                    <Package className="h-4 w-4" /> Raw Materials Used
+                  </h3>
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-blue-50">
+                        <TableRow>
+                          <TableHead className="w-12">#</TableHead>
+                          <TableHead>Raw Material Name</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedTally.rawMaterials.map((material, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{idx + 1}</TableCell>
+                            <TableCell>{material.name}</TableCell>
+                            <TableCell className="text-right">{material.quantity}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {/* Section 3: Costing Information */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-green-700 bg-green-50 p-2 rounded">
+                  <DollarSign className="h-4 w-4" /> Costing Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg bg-green-50/30">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Costing Amount</Label>
+                    <p className="text-lg font-bold text-green-600">
+                      ₹ {selectedTally.costingAmount?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}
+                    </p>
+                  </div>
+                  {selectedTally.costingAmount2 && (
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Costing Amount 2</Label>
+                      <p className="text-sm font-medium">{selectedTally.costingAmount2}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground">Product Name</Label>
-                <p className="text-sm font-semibold">{selectedTally?.productName}</p>
+
+              {/* Section 4: Additional Production Details */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-orange-700 bg-orange-50 p-2 rounded">
+                  <FileText className="h-4 w-4" /> Additional Production Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Party Name</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedTally.partyName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Order No.</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedTally.orderNo || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Color Condition</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedTally.colorCondition || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">PP Bag Used</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedTally.ppBagUsed || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">PP Bag To Be Used</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedTally.ppBagToBeUsed || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">PP Bag (Small)</Label>
+                    <p className="text-sm bg-gray-50 p-2 rounded">{selectedTally.ppBagSmall || "N/A"}</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground">Check Status</Label>
-                <p className="text-sm font-semibold">{selectedTally?.checkStatus}</p>
+
+              {/* Section 5: Planning and Actual Data */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-indigo-700 bg-indigo-50 p-2 rounded">
+                  <CheckCircle className="h-4 w-4" /> Planning & Actual Data
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-600">Planned 1</Label>
+                    <p className="text-sm">{selectedTally.planned1 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-600">Actual 1</Label>
+                    <p className="text-sm">{selectedTally.actual1 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-600">Status</Label>
+                    <p className="text-sm"><Badge>{selectedTally.status || "N/A"}</Badge></p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-600">Actual Qty 1</Label>
+                    <p className="text-sm">{selectedTally.actualQty1 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-600">Planned 2</Label>
+                    <p className="text-sm">{selectedTally.planned2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-600">Actual 2</Label>
+                    <p className="text-sm">{selectedTally.actual2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-600">Time Delay 2</Label>
+                    <p className="text-sm">{selectedTally.timeDelay2 || "N/A"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-600">Remarks</Label>
+                    <p className="text-sm">{selectedTally.remarks || "N/A"}</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground">Quantity</Label>
-                <p className="text-sm font-semibold">{selectedTally?.quantity}</p>
+
+              <Separator />
+
+              {/* Tally Remarks Section */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-purple-700">
+                  <FileText className="h-4 w-4" /> Tally Verification Remarks
+                </h3>
+                <div className="space-y-2">
+                  <Textarea
+                    id="remarks"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Enter your remarks for this tally verification..."
+                    rows={3}
+                  />
+                </div>
               </div>
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground">Check Date</Label>
-                <p className="text-sm font-semibold">{selectedTally?.checkTimestamp}</p>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-purple-600 hover:bg-purple-700">
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Complete Tally Verification
+                </Button>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="remarks">Remarks</Label>
-              <Textarea
-                id="remarks"
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Enter any remarks or observations about the tally verification..."
-                rows={4}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-purple-600 text-white hover:bg-purple-700">
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Complete Tally Verification
-              </Button>
-            </div>
-          </form>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>
