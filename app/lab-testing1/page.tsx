@@ -358,9 +358,9 @@ export default function LabTesting1Page() {
     setError(null)
     try {
       const [
-        jobCardsTable, 
-        masterTable, 
-        productionTable, 
+        jobCardsTable,
+        masterTable,
+        productionTable,
         actualProductionTable,
         costingResponseTable
       ] = await Promise.all([
@@ -409,7 +409,7 @@ export default function LabTesting1Page() {
       costingResponseDataRows.forEach((row) => {
         // Get the composition number (this should match the Job Card No.)
         const compositionNo = row[COSTING_COLUMNS.compositionNo] ? String(row[COSTING_COLUMNS.compositionNo]).trim() : ""
-        
+
         if (compositionNo) {
           // Parse planned date if available
           let plannedDate = ""
@@ -519,14 +519,14 @@ export default function LabTesting1Page() {
 
           // Get actual production data
           const productionData = productionDataMap.get(jobCardNo)
-          
+
           // Get costing response data using Job Card No. (which should match Composition No.)
           const costingData = costingDataMap.get(jobCardNo) || {}
 
           return {
             _rowIndex: row._rowIndex,
-            jobCardNo: jobCardNo,
-            deliveryOrderNo: deliveryOrderNo,
+            jobCardNo: jobCardNo.trim(),
+            deliveryOrderNo: deliveryOrderNo.trim(),
             productName: costingData.productName || String(row.G || ""),
             quantity: Number(row.H || 0),
             dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
@@ -545,7 +545,7 @@ export default function LabTesting1Page() {
             rm1: costingData.rm1 || "-",
             aluminaPercentage: costingData.aluminaPercentage || "-",
             ironPercentage: costingData.ironPercentage || "-",
-            plannedDate: costingData.plannedDate || "-",
+            plannedDate: row.S ? format(parseGvizDate(row.S), "dd/MM/yyyy") : (costingData.plannedDate || "-"),
           }
         })
 
@@ -560,9 +560,9 @@ export default function LabTesting1Page() {
             String(row.T).trim() !== ""
         )
         .map((row) => {
-          const jobCardNo = String(row.B || "")
+          const jobCardNo = String(row.B || "").trim()
           const costingData = costingDataMap.get(jobCardNo) || {}
-          
+
           // Parse timestamp from test completion
           let timestamp = ""
           if (row.T) {

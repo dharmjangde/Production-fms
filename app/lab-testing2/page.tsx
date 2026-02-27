@@ -328,8 +328,8 @@ export default function LabTesting2Page() {
             priority: String(productionRow?.H || ""),
             dateOfProduction: row.I ? format(parseGvizDate(row.I), "dd/MM/yyyy") : "",
             plannedDate: row.AE
-                ? format(parseGvizDate(row.AE), "dd/MM/yyyy")
-                : "",
+              ? format(parseGvizDate(row.AE), "dd/MM/yyyy")
+              : "",
             supervisorName: String(row.D || ""),
             shift: String(row.J || ""),
             rawMaterials: productionData ? productionData.rawMaterials : [],

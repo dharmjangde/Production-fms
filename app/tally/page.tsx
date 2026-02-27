@@ -37,13 +37,13 @@ interface ActualProductionItem {
   productName: string
   quantityOfFG: number
   serialNumber: string
-  
+
   // Raw Materials (20 pairs - Columns 8-47)
   rawMaterials: {
     name: string
     quantity: string | number
   }[]
-  
+
   // Additional Fields (Columns 48-68)
   machineRunningHour: string
   remarks1: string
@@ -74,7 +74,7 @@ interface ActualProductionItem {
   planned6: string
   actual6: string
   remarks3: string
-  
+
   // Tally specific fields
   checkStatus: string
   checkTimestamp: string
@@ -98,13 +98,15 @@ function parseGvizDate(gvizDateString: string | null | undefined): Date | null {
   return isNaN(date.getTime()) ? null : date
 }
 
-// Helper function to format date values
+// Helper function to format date values — output: dd/MM/yy HH:mm
 function formatDateValue(value: any): string {
   if (!value) return "N/A"
   if (typeof value === 'string' && value.startsWith('Date(')) {
     const parsed = parseGvizDate(value)
-    return parsed ? format(parsed, "dd/MM/yyyy HH:mm") : value
+    return parsed ? format(parsed, "dd/MM/yy HH:mm") : "N/A"
   }
+  // Already a plain string date/time — return as-is
+  if (typeof value === 'string') return value
   return String(value)
 }
 
@@ -142,10 +144,10 @@ export default function TallyPage() {
     for (let i = 0; i < 20; i++) {
       const nameCol = 8 + (i * 2) // Raw Material Name columns
       const qtyCol = 9 + (i * 2)   // Quantity columns
-      
+
       const rawMaterialName = row[`col${nameCol}`]
       const rawMaterialQty = row[`col${qtyCol}`]
-      
+
       if (rawMaterialName && String(rawMaterialName).trim() !== "") {
         rawMaterials.push({
           name: String(rawMaterialName || ""),
@@ -164,10 +166,10 @@ export default function TallyPage() {
       productName: String(row.col5 || ""),
       quantityOfFG: Number(row.col6 || 0),
       serialNumber: String(row.col7 || ""),
-      
+
       // Raw Materials
       rawMaterials,
-      
+
       // Additional Fields (adjust indices based on your actual columns)
       machineRunningHour: String(row.col48 || ""),
       remarks1: String(row.col49 || ""),
@@ -178,34 +180,42 @@ export default function TallyPage() {
       costingAmount: Number(row.col54 || 0),
       colorCondition: String(row.col55 || ""),
       orderNo: String(row.col56 || ""),
-      planned1: String(row.col57 || ""),
-      actual1: String(row.col58 || ""),
-      status: String(row.col59 || ""),
-      actualQty1: String(row.col60 || ""),
-      planned2: String(row.col61 || ""),
-      actual2: String(row.col62 || ""),
-      timeDelay2: String(row.col63 || ""),
-      remarks: String(row.col64 || ""),
-      planned3: String(row.col65 || ""),
-      actual3: String(row.col66 || ""),
-      costingAmount2: String(row.col67 || ""),
-      planned4: String(row.col68 || ""),
-      actual4: String(row.col69 || ""),
-      remarks1_2: String(row.col70 || ""),
-      planned5: String(row.col71 || ""),
-      actual5: String(row.col72 || ""),
-      remarks2: String(row.col73 || ""),
-      planned6: String(row.col74 || ""),
-      actual6: String(row.col75 || ""),
-      remarks3: String(row.col76 || ""),
-      
+      // Planning columns — exact mapping from user's sheet headers:
+      // col57:Planned1  col58:Actual1  col59:TimeDelay1  col60:Status  col61:Qty
+      // col62:Planned2  col63:Actual2  col64:TimeDelay2  col65:Remarks
+      // col66:Planned3  col67:Actual3  col68:CostingAmount(2nd)
+      // col69:Planned4  col70:Actual4  col71:Remarks1
+      // col72:Planned5  col73:Actual5  col74:Remarks4
+      // col75:Planned6  col76:Actual6  col77:Remarks3
+      planned1: formatDateValue(row.col57),
+      actual1: formatDateValue(row.col58),
+      status: String(row.col60 || ""),           // col60 = Status ✅
+      actualQty1: String(row.col61 || ""),       // col61 = Qty ✅
+      planned2: formatDateValue(row.col62),
+      actual2: formatDateValue(row.col63),
+      timeDelay2: String(row.col64 || ""),
+      remarks: String(row.col65 || ""),
+      planned3: formatDateValue(row.col66),
+      actual3: formatDateValue(row.col67),
+      costingAmount2: String(row.col68 || ""),   // col68 = BQ = Costing Amount (2nd) ✅
+      planned4: formatDateValue(row.col69),
+      actual4: formatDateValue(row.col70),
+      remarks1_2: String(row.col71 || ""),
+      planned5: formatDateValue(row.col72),
+      actual5: formatDateValue(row.col73),
+      remarks2: String(row.col74 || ""),
+      planned6: formatDateValue(row.col75),
+      actual6: formatDateValue(row.col76),
+      remarks3: String(row.col77 || ""),
+
       // Tally specific fields
-      checkStatus: String(row.col59 || "N/A"), // Status column
-      checkTimestamp: row.col58 ? formatDateValue(row.col58) : "N/A", // Actual1 column
-      tallyTimestamp: row.col63 ? formatDateValue(row.col63) : null, // Actual2 column (tally timestamp)
-      tallyRemarks: String(row.col65 || ""), // Remarks column
-      _rawCheckTimestamp: row.col58,
-      _rawTallyTimestamp: row.col63,
+      // BK = col62 = Planned2  |  BL = col63 = Actual2  |  BN = col65 = Remarks
+      checkStatus: String(row.col60 || "N/A"),   // col60 = Status ✅
+      checkTimestamp: row.col62 ? formatDateValue(row.col62) : "N/A", // Planned2 (BK=col62)
+      tallyTimestamp: row.col63 ? formatDateValue(row.col63) : null,  // Actual2  (BL=col63)
+      tallyRemarks: String(row.col65 || ""),     // Remarks (BN=col65)
+      _rawCheckTimestamp: row.col62,   // Planned2 (BK=col62): must be filled for pending
+      _rawTallyTimestamp: row.col63,   // Actual2  (BL=col63): must be empty  for pending
     }
   }
 
@@ -229,14 +239,23 @@ export default function TallyPage() {
           .filter(Boolean);
       };
 
-      const actualProductionRows = processGvizTable(actualProductionTable).slice(1); // Skip header row
-      
+      // Remove .slice(1) — gviz already excludes sheet header row.
+      // Using col0 check to skip any residual header/label rows.
+      const actualProductionRows = processGvizTable(actualProductionTable)
+        .filter((row: any) => {
+          // Skip rows where col0 is the literal string "Timestamp" or null
+          const ts = row.col0
+          if (!ts) return false
+          if (typeof ts === 'string' && ts.trim().toLowerCase() === 'timestamp') return false
+          return true
+        })
+
       // Process all rows
       const allItems = actualProductionRows.map(row => processActualProductionRow(row));
 
       // Filter pending tallies (have check timestamp but no tally timestamp)
-      const pendingData = allItems.filter(item => 
-        item._rawCheckTimestamp && 
+      const pendingData = allItems.filter(item =>
+        item._rawCheckTimestamp &&
         (item._rawTallyTimestamp === null || String(item._rawTallyTimestamp).trim() === "")
       );
       setPendingTallies(pendingData);
@@ -329,15 +348,15 @@ export default function TallyPage() {
       key: "firmName",
       render: (tally: ActualProductionItem) => tally.firmName,
     },
-    { 
-      header: "Product Name", 
-      key: "productName", 
-      render: (tally: ActualProductionItem) => tally.productName 
+    {
+      header: "Product Name",
+      key: "productName",
+      render: (tally: ActualProductionItem) => tally.productName
     },
-    { 
-      header: "Quantity", 
-      key: "quantityOfFG", 
-      render: (tally: ActualProductionItem) => tally.quantityOfFG 
+    {
+      header: "Quantity",
+      key: "quantityOfFG",
+      render: (tally: ActualProductionItem) => tally.quantityOfFG
     },
     {
       header: "Status",
@@ -357,20 +376,20 @@ export default function TallyPage() {
       key: "firmName",
       render: (tally: ActualProductionItem) => tally.firmName,
     },
-    { 
-      header: "Product Name", 
-      key: "productName", 
-      render: (tally: ActualProductionItem) => tally.productName 
+    {
+      header: "Product Name",
+      key: "productName",
+      render: (tally: ActualProductionItem) => tally.productName
     },
-    { 
-      header: "Quantity", 
-      key: "quantityOfFG", 
-      render: (tally: ActualProductionItem) => tally.quantityOfFG 
+    {
+      header: "Quantity",
+      key: "quantityOfFG",
+      render: (tally: ActualProductionItem) => tally.quantityOfFG
     },
-    { 
-      header: "Tally Date", 
-      key: "tallyTimestamp", 
-      render: (tally: ActualProductionItem) => tally.tallyTimestamp || "N/A" 
+    {
+      header: "Tally Date",
+      key: "tallyTimestamp",
+      render: (tally: ActualProductionItem) => tally.tallyTimestamp || "N/A"
     },
     {
       header: "Remarks",
@@ -540,7 +559,7 @@ export default function TallyPage() {
               All information from Actual Production sheet for this job card
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedTally && (
             <form
               onSubmit={(e) => {
@@ -642,15 +661,15 @@ export default function TallyPage() {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg bg-green-50/30">
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">Costing Amount</Label>
+                    <Label className="text-xs text-gray-500">Costing Amount (1st)</Label>
                     <p className="text-lg font-bold text-green-600">
                       ₹ {selectedTally.costingAmount?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}
                     </p>
                   </div>
                   {selectedTally.costingAmount2 && (
                     <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">Costing Amount 2</Label>
-                      <p className="text-sm font-medium">{selectedTally.costingAmount2}</p>
+                      <Label className="text-xs text-gray-500">Costing Amount (2nd)</Label>
+                      <p className="text-lg font-bold text-green-600">₹ {Number(selectedTally.costingAmount2).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     </div>
                   )}
                 </div>

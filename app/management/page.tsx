@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, CheckCircle, History, Settings, MessageSquare } from "lucide-react"
+import { Loader2, AlertTriangle, CheckCircle, History, Settings, MessageSquare, Eye, TestTube, TestTube2, ClipboardCheck, FlaskConical } from "lucide-react"
 import { format } from "date-fns"
 // Shadcn UI components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -38,6 +38,36 @@ interface PendingApprovalItem {
   firmName: string
   partyName: string
   planned4: string
+  // Lab Test 1 fields (from JobCards sheet)
+  lt1Status: string
+  lt1DateOfTest: string
+  lt1TestedBy: string
+  lt1WcPercentage: string
+  lt1InitialSettingTime: string
+  lt1FinalSettingTime: string
+  lt1FlowOfMaterial: string
+  lt1WhatToBeMixed: string
+  lt1SieveAnalysis: string
+  // Lab Test 2 fields (from JobCards sheet)
+  lt2Status: string
+  lt2DateOfTest: string
+  lt2TestedBy: string
+  lt2BdAt110: string
+  lt2CcsAt100: string
+  lt2BdAt1100: string
+  lt2CcsAt1100: string
+  lt2PlcAt1100: string
+  // Check (Management) fields
+  checkPlanned4: string
+  // Chemical Test fields (from JobCards sheet: AP-AX)
+  ctPlannedDate: string
+  ctCompletedDate: string
+  ctStatus: string
+  ctAluminaPercent: string
+  ctIronPercent: string
+  ctSilicaPercent: string
+  ctCalciumPercent: string
+  ctTestedBy: string
 }
 
 interface HistoryApprovalItem {
@@ -48,6 +78,34 @@ interface HistoryApprovalItem {
   partyName: string
   approvalDate: string
   remarks: string
+  // Lab Test 1 fields
+  lt1Status: string
+  lt1DateOfTest: string
+  lt1TestedBy: string
+  lt1WcPercentage: string
+  lt1InitialSettingTime: string
+  lt1FinalSettingTime: string
+  lt1FlowOfMaterial: string
+  lt1WhatToBeMixed: string
+  lt1SieveAnalysis: string
+  // Lab Test 2 fields
+  lt2Status: string
+  lt2DateOfTest: string
+  lt2TestedBy: string
+  lt2BdAt110: string
+  lt2CcsAt100: string
+  lt2BdAt1100: string
+  lt2CcsAt1100: string
+  lt2PlcAt1100: string
+  // Chemical Test fields (from JobCards sheet: AP-AX)
+  ctPlannedDate: string
+  ctCompletedDate: string
+  ctStatus: string
+  ctAluminaPercent: string
+  ctIronPercent: string
+  ctSilicaPercent: string
+  ctCalciumPercent: string
+  ctTestedBy: string
 }
 
 interface GvizRow {
@@ -57,6 +115,7 @@ interface GvizRow {
 // --- Column Definitions ---
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true },
+  { header: "View", dataKey: "viewColumn", alwaysVisible: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
@@ -66,6 +125,7 @@ const PENDING_COLUMNS_META = [
 ]
 
 const HISTORY_COLUMNS_META = [
+  { header: "View", dataKey: "viewColumn", alwaysVisible: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
@@ -102,6 +162,8 @@ export default function ManagementApprovalPage() {
   const [activeTab, setActiveTab] = useState("pending")
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
+  const [viewingItem, setViewingItem] = useState<PendingApprovalItem | HistoryApprovalItem | null>(null)
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
 
   useEffect(() => {
     const initializeVisibility = (columnsMeta: any[]) => {
@@ -143,8 +205,6 @@ export default function ManagementApprovalPage() {
     setError(null)
     try {
       const [actualProductionTable, jobCardsTable] = await Promise.all([
-        // Pass headers=5: the Actual Production sheet has 5 header rows (rows 1-5),
-        // so gviz will skip them and table.rows[0] will be the first real data row (row 6).
         fetchDataWithGviz(ACTUAL_PRODUCTION_SHEET, 5),
         fetchDataWithGviz(JOB_CARDS_SHEET).catch(() => ({ rows: [] })),
       ])
@@ -218,21 +278,57 @@ export default function ManagementApprovalPage() {
           }
         )
         .map((row: { [key: string]: any }) => {
+          const jobCardNo = String(row.col1 || "")
           const jobCard = jobCardsRows.find((jc: { [key: string]: any }) =>
             String(jc.col1 || '').trim() === String(row.col1 || '').trim()
           );
 
           const plannedDate = parseGvizDate(row.col69);
 
+          // Helper to safely format a date col from jobCard
+          const fmtJC = (col: any) => {
+            if (!col) return "-"
+            const d = parseGvizDate(String(col))
+            return d ? format(d, "dd/MM/yy") : String(col)
+          }
+
           return {
-            jobCardNo: String(row.col1 || ""),
+            jobCardNo: jobCardNo,
             deliveryOrderNo: String(row.col4 || ""),
             productName: String(row.col5 || ""),
             firmName: String(row.col2 || ""),
-            partyName: String(jobCard?.col5 || ""),
-            planned4: plannedDate
-              ? format(plannedDate, "dd/MM/yy")
-              : String(row.col69 || ""),
+            partyName: String(jobCard?.col4 || ""),
+            planned4: plannedDate ? format(plannedDate, "dd/MM/yy") : String(row.col69 || ""),
+            // Lab Test 1 (from JobCards: col18=S, col21=V, col22=W, col23=X, col24=Y, col25=Z, col26=AA, col27=AB, col28=AC, col29=AD)
+            lt1Status: String(jobCard?.col21 || "-"),
+            lt1DateOfTest: fmtJC(jobCard?.col22),
+            lt1TestedBy: String(jobCard?.col24 || "-"),
+            lt1WcPercentage: String(jobCard?.col23 || "-"),
+            lt1InitialSettingTime: String(jobCard?.col25 || "-").replace(/^'/, ""),
+            lt1FinalSettingTime: String(jobCard?.col27 || "-").replace(/^'/, ""),
+            lt1FlowOfMaterial: String(jobCard?.col26 || "-"),
+            lt1WhatToBeMixed: String(jobCard?.col28 || "-"),
+            lt1SieveAnalysis: String(jobCard?.col29 || "-"),
+            // Lab Test 2 (from JobCards: col33=AH, col34=AI, col35=AJ, col36=AK, col37=AL, col38=AM, col39=AN, col40=AO)
+            lt2Status: String(jobCard?.col33 || "-"),
+            lt2TestedBy: String(jobCard?.col34 || "-"),
+            lt2DateOfTest: fmtJC(jobCard?.col35),
+            lt2BdAt110: String(jobCard?.col36 || "-"),
+            lt2CcsAt100: String(jobCard?.col37 || "-"),
+            lt2BdAt1100: String(jobCard?.col38 || "-"),
+            lt2CcsAt1100: String(jobCard?.col39 || "-"),
+            lt2PlcAt1100: String(jobCard?.col40 || "-"),
+            checkPlanned4: plannedDate ? format(plannedDate, "dd/MM/yy") : String(row.col69 || "-"),
+            // Chemical Test from JobCards (col41=AP Planned, col42=AQ Actual, col44=AS Status,
+            // col45=AT Alumina%, col46=AU Iron%, col47=AV Silica%, col48=AW Calcium%, col49=AX Tested By)
+            ctPlannedDate: fmtJC(jobCard?.col41),
+            ctCompletedDate: fmtJC(jobCard?.col42),
+            ctStatus: String(jobCard?.col44 || "-"),
+            ctAluminaPercent: String(jobCard?.col45 || "-"),
+            ctIronPercent: String(jobCard?.col46 || "-"),
+            ctSilicaPercent: String(jobCard?.col47 || "-"),
+            ctCalciumPercent: String(jobCard?.col48 || "-"),
+            ctTestedBy: String(jobCard?.col49 || "-"),
           };
         });
 
@@ -268,14 +364,49 @@ export default function ManagementApprovalPage() {
           const approvalDate = parseGvizDate(row.col70);
           const remarks = String(row.col71 || "");
 
+          const fmtJC = (col: any) => {
+            if (!col) return "-"
+            const d = parseGvizDate(String(col))
+            return d ? format(d, "dd/MM/yy") : String(col)
+          }
+
           return {
             jobCardNo: String(row.col1 || ""),
             deliveryOrderNo: String(row.col4 || ""),
             productName: String(row.col5 || ""),
             firmName: String(row.col2 || ""),
-            partyName: String(jobCard?.col5 || ""),
+            partyName: String(jobCard?.col4 || ""),
             approvalDate: approvalDate ? format(approvalDate, "dd/MM/yy HH:mm") : String(row.col70 || ""),
             remarks: remarks || "-",
+            // Lab Test 1
+            lt1Status: String(jobCard?.col21 || "-"),
+            lt1DateOfTest: fmtJC(jobCard?.col22),
+            lt1TestedBy: String(jobCard?.col24 || "-"),
+            lt1WcPercentage: String(jobCard?.col23 || "-"),
+            lt1InitialSettingTime: String(jobCard?.col25 || "-").replace(/^'/, ""),
+            lt1FinalSettingTime: String(jobCard?.col27 || "-").replace(/^'/, ""),
+            lt1FlowOfMaterial: String(jobCard?.col26 || "-"),
+            lt1WhatToBeMixed: String(jobCard?.col28 || "-"),
+            lt1SieveAnalysis: String(jobCard?.col29 || "-"),
+            // Lab Test 2
+            lt2Status: String(jobCard?.col33 || "-"),
+            lt2TestedBy: String(jobCard?.col34 || "-"),
+            lt2DateOfTest: fmtJC(jobCard?.col35),
+            lt2BdAt110: String(jobCard?.col36 || "-"),
+            lt2CcsAt100: String(jobCard?.col37 || "-"),
+            lt2BdAt1100: String(jobCard?.col38 || "-"),
+            lt2CcsAt1100: String(jobCard?.col39 || "-"),
+            lt2PlcAt1100: String(jobCard?.col40 || "-"),
+            // Chemical Test from JobCards (col41=AP Planned, col42=AQ Actual, col44=AS Status,
+            // col45=AT Alumina%, col46=AU Iron%, col47=AV Silica%, col48=AW Calcium%, col49=AX Tested By)
+            ctPlannedDate: fmtJC(jobCard?.col41),
+            ctCompletedDate: fmtJC(jobCard?.col42),
+            ctStatus: String(jobCard?.col44 || "-"),
+            ctAluminaPercent: String(jobCard?.col45 || "-"),
+            ctIronPercent: String(jobCard?.col46 || "-"),
+            ctSilicaPercent: String(jobCard?.col47 || "-"),
+            ctCalciumPercent: String(jobCard?.col48 || "-"),
+            ctTestedBy: String(jobCard?.col49 || "-"),
           };
         })
         .sort((a, b) => new Date(b.approvalDate).getTime() - new Date(a.approvalDate).getTime());
@@ -312,6 +443,11 @@ export default function ManagementApprovalPage() {
     setFormData(initialFormState)
     setFormErrors({})
     setIsDialogOpen(true)
+  }
+
+  const handleViewDetails = (item: PendingApprovalItem | HistoryApprovalItem) => {
+    setViewingItem(item)
+    setIsViewDialogOpen(true)
   }
 
   const handleSaveApproval = async () => {
@@ -514,6 +650,16 @@ export default function ManagementApprovalPage() {
                                       <MessageSquare className="mr-2 h-4 w-4" />
                                       Add Remarks
                                     </Button>
+                                  ) : col.dataKey === "viewColumn" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleViewDetails(item)}
+                                      className="border-blue-400 text-blue-600 hover:bg-blue-50"
+                                    >
+                                      <Eye className="mr-2 h-3.5 w-3.5" />
+                                      View
+                                    </Button>
                                   ) : (
                                     item[col.dataKey as keyof PendingApprovalItem] || "-"
                                   )}
@@ -572,6 +718,16 @@ export default function ManagementApprovalPage() {
                                     <span className="max-w-[200px] truncate block" title={item.remarks}>
                                       {item.remarks}
                                     </span>
+                                  ) : col.dataKey === "viewColumn" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleViewDetails(item)}
+                                      className="border-blue-400 text-blue-600 hover:bg-blue-50"
+                                    >
+                                      <Eye className="mr-2 h-3.5 w-3.5" />
+                                      View
+                                    </Button>
                                   ) : (
                                     item[col.dataKey as keyof HistoryApprovalItem] || "-"
                                   )}
@@ -661,6 +817,110 @@ export default function ManagementApprovalPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+      {/* View Details Dialog */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-blue-700">
+              <ClipboardCheck className="h-5 w-5" />
+              Test Details — JC: {viewingItem?.jobCardNo}
+            </DialogTitle>
+            <DialogDescription>
+              Physical Lab Test 1, Physical Lab Test 2, Chemical Test, and Management Check details for this job card.
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingItem && (
+            <div className="space-y-5 pt-2">
+              {/* Basic Info */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg border text-sm">
+                <div><span className="text-xs text-gray-500 block">Product Name</span><span className="font-semibold">{viewingItem.productName || "-"}</span></div>
+                <div><span className="text-xs text-gray-500 block">Delivery Order No.</span><span className="font-semibold">{viewingItem.deliveryOrderNo || "-"}</span></div>
+                <div><span className="text-xs text-gray-500 block">Firm Name</span><span className="font-semibold">{viewingItem.firmName || "-"}</span></div>
+                <div><span className="text-xs text-gray-500 block">Party Name</span><span className="font-semibold">{viewingItem.partyName || "-"}</span></div>
+              </div>
+
+              {/* Lab Test 1 */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold flex items-center gap-2 bg-purple-50 text-purple-700 px-3 py-2 rounded">
+                  <TestTube className="h-4 w-4" /> Lab Test 1 (Physical Test 1)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3 border rounded-lg text-sm">
+                  <div><span className="text-xs text-gray-500 block">Status</span>
+                    <Badge variant={viewingItem.lt1Status === "Accepted" ? "default" : viewingItem.lt1Status === "-" ? "secondary" : "destructive"}>{viewingItem.lt1Status}</Badge>
+                  </div>
+                  <div><span className="text-xs text-gray-500 block">Date of Test</span><span className="font-medium">{viewingItem.lt1DateOfTest || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Tested By</span><span className="font-medium">{viewingItem.lt1TestedBy || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">WC %</span><span className="font-medium">{viewingItem.lt1WcPercentage || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Initial Setting Time</span><span className="font-medium">{viewingItem.lt1InitialSettingTime || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Final Setting Time</span><span className="font-medium">{viewingItem.lt1FinalSettingTime || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Flow of Material</span><span className="font-medium">{viewingItem.lt1FlowOfMaterial || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">What To Be Mixed</span><span className="font-medium">{viewingItem.lt1WhatToBeMixed || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Sieve Analysis</span><span className="font-medium">{viewingItem.lt1SieveAnalysis || "-"}</span></div>
+                </div>
+              </div>
+
+              {/* Lab Test 2 */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-2 rounded">
+                  <TestTube2 className="h-4 w-4" /> Lab Test 2 (Physical Test 2)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3 border rounded-lg text-sm">
+                  <div><span className="text-xs text-gray-500 block">Status</span>
+                    <Badge variant={viewingItem.lt2Status === "Pass" ? "default" : viewingItem.lt2Status === "-" ? "secondary" : "destructive"}>{viewingItem.lt2Status}</Badge>
+                  </div>
+                  <div><span className="text-xs text-gray-500 block">Date of Test</span><span className="font-medium">{viewingItem.lt2DateOfTest || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Tested By</span><span className="font-medium">{viewingItem.lt2TestedBy || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">BD at 110°C</span><span className="font-medium">{viewingItem.lt2BdAt110 || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">CCS at 100°C</span><span className="font-medium">{viewingItem.lt2CcsAt100 || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">BD at 1100°C</span><span className="font-medium">{viewingItem.lt2BdAt1100 || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">CCS at 1100°C</span><span className="font-medium">{viewingItem.lt2CcsAt1100 || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">PLC at 1100°C</span><span className="font-medium">{viewingItem.lt2PlcAt1100 || "-"}</span></div>
+                </div>
+              </div>
+
+              {/* Chemical Test (Lab Test) */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold flex items-center gap-2 bg-teal-50 text-teal-700 px-3 py-2 rounded">
+                  <FlaskConical className="h-4 w-4" /> Chemical Test (Lab Test)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3 border rounded-lg text-sm">
+                  <div><span className="text-xs text-gray-500 block">Status</span>
+                    <Badge variant={viewingItem.ctStatus === "Pass" || viewingItem.ctStatus === "Accepted" ? "default" : viewingItem.ctStatus === "-" ? "secondary" : "destructive"}>{viewingItem.ctStatus}</Badge>
+                  </div>
+                  <div><span className="text-xs text-gray-500 block">Planned Date</span><span className="font-medium">{viewingItem.ctPlannedDate || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Completed Date</span><span className="font-medium text-green-600">{viewingItem.ctCompletedDate || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Alumina %</span><span className="font-medium">{viewingItem.ctAluminaPercent || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Iron %</span><span className="font-medium">{viewingItem.ctIronPercent || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Silica %</span><span className="font-medium">{viewingItem.ctSilicaPercent || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Calcium %</span><span className="font-medium">{viewingItem.ctCalciumPercent || "-"}</span></div>
+                  <div><span className="text-xs text-gray-500 block">Tested By</span><span className="font-medium">{viewingItem.ctTestedBy || "-"}</span></div>
+                </div>
+              </div>
+
+              {/* Check / Management */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2 rounded">
+                  <CheckCircle className="h-4 w-4" /> Check (Management Approval)
+                </h3>
+                <div className="grid grid-cols-2 gap-3 p-3 border rounded-lg text-sm">
+                  <div><span className="text-xs text-gray-500 block">Planned 4</span><span className="font-medium">{(viewingItem as any).planned4 || (viewingItem as any).checkPlanned4 || "-"}</span></div>
+                  {'approvalDate' in viewingItem && (
+                    <>
+                      <div><span className="text-xs text-gray-500 block">Approval Date</span><span className="font-medium text-green-600">{viewingItem.approvalDate}</span></div>
+                      <div className="col-span-2"><span className="text-xs text-gray-500 block">Remarks</span><span className="font-medium">{viewingItem.remarks}</span></div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>Close</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
